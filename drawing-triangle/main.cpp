@@ -1,16 +1,56 @@
 #include <vulkan/vulkan_raii.hpp>
+
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <print>
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
 
+
 constexpr uint32_t c_width{800};
 constexpr uint32_t c_height{600};
 
+static void glfwErrorCallback(const int error, const char *description)
+{
+	std::cerr << error << " GLFW Error: " << description << std::endl;
+}
+
 class LbgtTriangle
 {
+	void initWindow()
+	{
+		glfwSetErrorCallback(glfwErrorCallback);
+
+		if (not glfwInit()) throw std::runtime_error("Failed to initialize GLFW");
+
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+
+		m_window = glfwCreateWindow(c_width, c_height, "Sobaka", nullptr, nullptr);
+
+		glfwShowWindow(m_window);
+
+		if(m_window == nullptr) throw std::runtime_error("Failed to create GLFW window");
+	}
+
+	void initVulkan()
+	{
+	}
+
+	void mainLoop()
+	{
+		while (not glfwWindowShouldClose(m_window))
+			glfwPollEvents();
+	}
+
+	void cleanup()
+	{
+		glfwDestroyWindow(m_window);
+		glfwTerminate();
+	}
+
 public:
 	void run()
 	{
@@ -21,34 +61,7 @@ public:
 	}
 
 private:
-
-	void initWindow()
-	{
-		glfwInit();
-
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-		m_window = glfwCreateWindow(c_width, c_height, "Sobaka", nullptr, nullptr);
-	}
-
-	void initVulkan()
-	{
-	}
-
-	void mainLoop()
-	{
-		while (!glfwWindowShouldClose(m_window)) glfwPollEvents();
-	}
-
-	void cleanup()
-	{
-		glfwDestroyWindow(m_window);
-
-		glfwTerminate();
-	}
-
-	GLFWwindow* m_window;
+	GLFWwindow *m_window{nullptr};
 };
 
 int main()
