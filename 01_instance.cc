@@ -1,15 +1,11 @@
-/*#if defined(__INTELLISENSE__) and not defined(USE_CPP20_MODULES)
-#include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif*/
-
 #include <vulkan/vulkan_raii.hpp>
 
 #define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 #include <iostream>
 #include <ostream>
-#include <GLFW/glfw3.h>
+
 
 
 using i32 = std::int32_t;
@@ -21,6 +17,11 @@ constexpr i32 HEIGHT = 600;
 
 class HelloTriangleApplication
 {
+	void createInstance()
+	{
+
+	}
+
 	void initWindow(const i32 width, const i32 height)
 	{
 		if (not glfwInit())
@@ -36,6 +37,7 @@ class HelloTriangleApplication
 
 	void initVulkan()
 	{
+		createInstance();
 	}
 
 	void mainLoop()
@@ -65,6 +67,9 @@ public:
 private:
 
 	GLFWwindow* window;
+
+	vk::raii::Context context;
+	vk::raii::Instance instance;
 };
 
 int main()

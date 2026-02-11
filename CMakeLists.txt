@@ -158,3 +158,4 @@ function (add_chapter CHAPTER_NAME)
 endfunction ()
 
 add_chapter(00_base-code)
+add_chapter(01_instance)

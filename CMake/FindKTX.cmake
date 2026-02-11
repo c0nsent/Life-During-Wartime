@@ -16,7 +16,7 @@
 # Check if we're on Linux - if so, we'll skip the search and directly use FetchContent
 if(UNIX AND NOT APPLE)
   # On Linux, we assume KTX is not installed and proceed directly to fetching it
-  set(KTX_FOUND FALSE)
+  set(KTX_FOUND TRUE)
 else()
   # On non-Linux platforms, try to find KTX using pkg-config first
   find_package(PkgConfig QUIET)
@@ -31,6 +31,7 @@ else()
     HINTS
       ${PC_KTX_INCLUDEDIR}
       /usr/include
+      /usr/bin
       /usr/local/include
       $ENV{KTX_DIR}/include
       $ENV{VULKAN_SDK}/include
