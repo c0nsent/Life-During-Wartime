@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.29)
+cmake_minimum_required (VERSION 4.2)
 
 project (VulkanTutorial)
 
@@ -10,6 +10,7 @@ option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan" OFF)
 # Enable C++ module dependency scanning only if C++ 20 module is enabled
 if(ENABLE_CPP20_MODULE)
 	set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+	message("Module support enabled")
 endif()
 
 find_package (glfw3 REQUIRED)
@@ -37,18 +38,6 @@ if(ENABLE_CPP20_MODULE)
 	)
 
 	set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
-
-	# Add MSVC-specific compiler options for proper C++ module support
-	if(MSVC)
-		target_compile_options(VulkanCppModule PRIVATE
-				/std:c++latest      # Use latest C++ standard for better module support
-				/permissive-        # Standards conformance mode
-				/Zc:__cplusplus     # Enable correct __cplusplus macro
-				/EHsc               # Enable C++ exception handling
-				/Zc:preprocessor    # Use conforming preprocessor
-				/translateInclude   # Automatically translate #include to import for standard library
-		)
-	endif()
 
 	target_sources(VulkanCppModule
 			PUBLIC
@@ -78,12 +67,10 @@ endif()
 find_package(stb REQUIRED)
 set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
-set(VULKAN_SDK ~/vulkansdk/default/x86_64)
-
 add_executable (glslang::validator IMPORTED)
-find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS ${VULKAN_SDK}/bin REQUIRED)
+find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 set_property (TARGET glslang::validator PROPERTY IMPORTED_LOCATION "${GLSLANG_VALIDATOR}")
-find_program(SLANGC_EXECUTABLE slangc HINTS ${VULKAN_SDK}/bin REQUIRED)
+find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
 function (add_shaders_target TARGET)
 	cmake_parse_arguments ("SHADER" "" "CHAPTER_NAME" "SOURCES" ${ARGN})
@@ -129,10 +116,10 @@ endfunction()
 
 function (add_chapter CHAPTER_NAME)
 	cmake_parse_arguments (CHAPTER "" "SHADER" "LIBS;TEXTURES;MODELS" ${ARGN})
-	add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cpp)
+	add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cc)
 	set_target_properties (${CHAPTER_NAME} PROPERTIES
 			RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
-	set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 20)
+	set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 23)
 	target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
 	target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 
@@ -143,12 +130,6 @@ function (add_chapter CHAPTER_NAME)
 
 	# Define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS to treat VK_ERROR_OUT_OF_DATE_KHR as a success code
 	target_compile_definitions(${CHAPTER_NAME} PRIVATE "VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS" )
-
-	if(WIN32)
-		if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-			set_target_properties(${CHAPTER_NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${CHAPTER_NAME}")
-		endif()
-	endif()
 
 	if (DEFINED CHAPTER_SHADER)
 		set (CHAPTER_SHADER_TARGET ${CHAPTER_NAME}_shader)
@@ -176,5 +157,4 @@ function (add_chapter CHAPTER_NAME)
 	endif ()
 endfunction ()
 
-add_chapter(00_test
-		SHADER 09_shader_base)
+add_chapter(00_base-code)
