@@ -8,14 +8,26 @@
 #include <cstdint>
 #include <stdexcept>
 #include <print>
+#include <array>
 
 
 using i32 = std::int32_t;
 using u32 = std::uint32_t;
 
-
 constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
+
+
+constexpr std::array validationLayers{
+	"VK_LAYER_KHRONOS_validation"
+};
+
+#ifdef NDEBUG
+constexpr bool enableValidationLayers{ false };
+#else
+constexpr bool enableValidationLayers{ true };
+#endif
+
 
 class HelloTriangleApplication
 {
@@ -122,7 +134,8 @@ int main()
 	}
 	catch (const std::runtime_error& e)
 	{
-		throw std::runtime_error{std::string{e.what()}};
+		return 1;
 	}
 
+	return 0;
 }
