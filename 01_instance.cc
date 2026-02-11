@@ -7,6 +7,7 @@
 #include <ranges>
 #include <cstdint>
 #include <stdexcept>
+#include <print>
 
 
 using i32 = std::int32_t;
@@ -31,16 +32,18 @@ class HelloTriangleApplication
 		u32 glfwExtensionCount{};
 		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount) };
 
-		const auto extensionProperties{ context.enumerateInstanceExtensionProperties() };
+		const auto extensionProperties{ m_context.enumerateInstanceExtensionProperties() };
 
 		for (u32 i{0}; i < glfwExtensionCount; ++i)
 		{
 			if (std::ranges::none_of(extensionProperties,
 				[glfwExtension{glfwExtensions[i]}](auto const& extensionProperty)
 				{
+					//std::println("{}", glfwExtension);
 					return std::strcmp(extensionProperty.extensionName, glfwExtension) == 0;
 				}))
 				throw std::runtime_error{"Required GLFW extension not supported: " + std::string(glfwExtensions[i])};
+
 		}
 
 		const vk::InstanceCreateInfo createInfo {
@@ -49,7 +52,7 @@ class HelloTriangleApplication
 			.ppEnabledExtensionNames = glfwExtensions
 		};
 
-		instance = vk::raii::Instance(context, createInfo);
+		m_instance = vk::raii::Instance{m_context, createInfo};
 
 	}
 
@@ -61,8 +64,8 @@ class HelloTriangleApplication
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
-		if (not window)
+		m_window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
+		if (not m_window)
 			std::cerr << "Failed to create GLFW window" << std::endl;
 	}
 
@@ -73,7 +76,7 @@ class HelloTriangleApplication
 
 	void mainLoop()
 	{
-		while (not glfwWindowShouldClose(window))
+		while (not glfwWindowShouldClose(m_window))
 		{
 			glfwPollEvents();
 		}
@@ -81,7 +84,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
+		glfwDestroyWindow(m_window);
 		glfwTerminate();
 	}
 
@@ -97,10 +100,10 @@ public:
 
 private:
 
-	GLFWwindow* window;
+	GLFWwindow *m_window;
 
-	vk::raii::Context context;
-	vk::raii::Instance instance{nullptr}; //Дефолтный конструктор удален
+	vk::raii::Context m_context;
+	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
 };
 
 int main()

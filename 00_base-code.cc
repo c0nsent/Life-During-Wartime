@@ -29,8 +29,8 @@ class HelloTriangleApplication
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
-		if (not window)
+		m_window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
+		if (not m_window)
 			std::cerr << "Failed to create GLFW window" << std::endl;
 	}
 
@@ -40,7 +40,7 @@ class HelloTriangleApplication
 
 	void mainLoop()
 	{
-		while (not glfwWindowShouldClose(window))
+		while (not glfwWindowShouldClose(m_window))
 		{
 			glfwPollEvents();
 		}
@@ -48,7 +48,7 @@ class HelloTriangleApplication
 
 	void cleanup()
 	{
-		glfwDestroyWindow(window);
+		glfwDestroyWindow(m_window);
 		glfwTerminate();
 	}
 
@@ -64,7 +64,7 @@ public:
 
 private:
 
-	GLFWwindow* window;
+	GLFWwindow* m_window;
 };
 
 int main()
