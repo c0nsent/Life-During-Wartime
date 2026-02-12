@@ -9,6 +9,9 @@
 #include <stdexcept>
 #include <print>
 #include <array>
+#include <functional>
+#include <optional>
+#include <unordered_set>
 
 
 using i32 = std::int32_t;
@@ -18,19 +21,44 @@ constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
 
-constexpr std::array validationLayers{
-	"VK_LAYER_KHRONOS_validation"
+constexpr auto validationLayers{
+	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
 };
 
 #ifdef NDEBUG
-constexpr bool enableValidationLayers{ false };
+constexpr bool isValidationLayersEnabled{ false };
 #else
-constexpr bool enableValidationLayers{ true };
+constexpr bool isValidationLayersEnabled{ true };
 #endif
 
 
 class HelloTriangleApplication
 {
+	[[nodiscard]] bool initValidationLayers() const
+	{
+		const auto availableLayersName{ std::invoke(
+			[&]
+			{
+				const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
+
+				std::unordered_set<std::string_view> result;
+				result.reserve(availableLayerProps.size());
+
+				for (const auto& layerProp : availableLayerProps)
+				{
+					result.insert(layerProp.layerName);
+				}
+
+				return result;
+			}
+		)};
+
+		return std::ranges::all_of(validationLayers, [&](const std::string_view validationLayer)
+		{
+			return availableLayersName.contains(validationLayer);
+		});
+	}
+
 	void createInstance()
 	{
 		constexpr vk::ApplicationInfo appInfo{
@@ -40,6 +68,12 @@ class HelloTriangleApplication
 			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
 			.apiVersion = vk::ApiVersion14
 		};
+
+		if constexpr(isValidationLayersEnabled)
+		{
+			if (not initValidationLayers())
+				throw std::runtime_error{"Failed to initialize validation layers"};
+		}
 
 		u32 glfwExtensionCount{};
 		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount) };
@@ -67,8 +101,10 @@ class HelloTriangleApplication
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
+			.enabledLayerCount = validationLayers.size(),
+			.ppEnabledLayerNames = validationLayers.data(),
 			.enabledExtensionCount = glfwExtensionCount,
-			.ppEnabledExtensionNames = glfwExtensions
+			.ppEnabledExtensionNames = glfwExtensions,
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
@@ -134,6 +170,7 @@ int main()
 	}
 	catch (const std::runtime_error& e)
 	{
+		std::cerr << e.what() << std::endl;
 		return 1;
 	}
 
