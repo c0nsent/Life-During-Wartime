@@ -59,6 +59,19 @@ class HelloTriangleApplication
 		});
 	}
 
+
+	auto getRequiredExtensions() -> std::vector<const char *>
+	{
+		u32 glfwExtensionCount{};
+		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount)};
+
+		std::vector<const char *> extensions{glfwExtensions, glfwExtensions + glfwExtensionCount};
+
+		if constexpr(isValidationLayersEnabled) extensions.push_back(vk::EXTDebugUtilsExtensionName);
+
+		return extensions;
+	}
+
 	void createInstance()
 	{
 		constexpr vk::ApplicationInfo appInfo{
@@ -98,6 +111,8 @@ class HelloTriangleApplication
 				throw std::runtime_error{"Required GLFW extension not supported: " + std::string(glfwExtensions[i])};
 
 		}
+
+		const auto extensions{ getRequiredExtensions() };
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
