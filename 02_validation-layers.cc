@@ -36,40 +36,51 @@ class HelloTriangleApplication
 {
 	[[nodiscard]] bool initValidationLayers() const
 	{
-		const auto availableLayersName{ std::invoke(
-			[&]
+		const auto availableLayersName{ std::invoke( [&]
 			{
 				const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
 
 				std::unordered_set<std::string_view> result;
 				result.reserve(availableLayerProps.size());
 
-				for (const auto& layerProp : availableLayerProps)
-				{
-					result.insert(layerProp.layerName);
-				}
+				for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
 
 				return result;
 			}
 		)};
 
-		return std::ranges::all_of(validationLayers, [&](const std::string_view validationLayer)
-		{
-			return availableLayersName.contains(validationLayer);
-		});
+
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
+			[&](const std::string_view validationLayer)
+			{
+				return availableLayersName.contains(validationLayer);
+			}
+		)};
+
+		return isAllRequiredLayersAvailable;
 	}
 
 
-	auto getRequiredExtensions() -> std::vector<const char *>
+	auto getRequiredExtensions() -> std::vector<const char*>
 	{
 		u32 glfwExtensionCount{};
-		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount)};
+		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount) };
 
-		std::vector<const char *> extensions{glfwExtensions, glfwExtensions + glfwExtensionCount};
+		std::vector<const char *> extensions{ glfwExtensions, glfwExtensions + glfwExtensionCount };
 
-		if constexpr(isValidationLayersEnabled) extensions.push_back(vk::EXTDebugUtilsExtensionName);
+		if constexpr(isValidationLayersEnabled) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
 
 		return extensions;
+	}
+
+	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
+		const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+		const vk::DebugUtilsMessageTypeFlagsEXT type,
+		const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *)
+	{
+		std::cerr << "Validation layer: type" << to_string(type) << " mgs: " << pCallbackData->pMessage << std::endl;
+
+		return vk::False;
 	}
 
 	void createInstance()
@@ -98,7 +109,7 @@ class HelloTriangleApplication
 		{
 			std::cout << extension.extensionName << '\n'; //Через println выдает какую-то белиберду
 		});
-		std::cout << std::endl;;
+		std::cout << std::endl;
 
 		for(u32 i{0}; i < glfwExtensionCount; ++i)
 		{
@@ -112,14 +123,14 @@ class HelloTriangleApplication
 
 		}
 
-		const auto extensions{ getRequiredExtensions() };
+		const auto requiredExtensions{ getRequiredExtensions() };
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
 			.enabledLayerCount = validationLayers.size(),
 			.ppEnabledLayerNames = validationLayers.data(),
-			.enabledExtensionCount = glfwExtensionCount,
-			.ppEnabledExtensionNames = glfwExtensions,
+			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
+			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
