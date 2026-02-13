@@ -3,14 +3,15 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <iostream>
-#include <ranges>
-#include <cstdint>
-#include <stdexcept>
-#include <print>
 #include <array>
+#include <cstdint>
 #include <functional>
+#include <iostream>
 #include <optional>
+#include <print>
+#include <ranges>
+#include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 
 
@@ -61,7 +62,7 @@ class HelloTriangleApplication
 	}
 
 
-	auto getRequiredExtensions() -> std::vector<const char*>
+	static auto getRequiredExtensions() -> std::vector<const char *>
 	{
 		u32 glfwExtensionCount{};
 		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount) };
@@ -73,6 +74,36 @@ class HelloTriangleApplication
 		return extensions;
 	}
 
+	std::optional<std::vector<const char *>> checkIfRequiredExtensionSupported(const std::vector<const char *> &requiredExtensions)
+	{
+		const auto availableExtensions{ std::invoke([&]
+		{
+			const auto extensionPropertiesVec{ m_context.enumerateInstanceExtensionProperties() };
+
+			std::unordered_set<const char *> result;
+			result.reserve(requiredExtensions.size());
+
+			for (const auto &[extensionName, specVersion] : extensionPropertiesVec)
+				result.insert(extensionName);
+
+
+			return result;
+		})};
+
+		std::vector<const char *> unsupportedExtensions;
+		unsupportedExtensions.reserve(requiredExtensions.size());
+
+		std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
+		{
+			if (availableExtensions.contains(requiredExtension)) return true;
+
+			unsupportedExtensions.emplace_back(requiredExtension);
+			return false;
+		});
+
+		return unsupportedExtensions.empty() ? std::nullopt : std::optional{std::move(unsupportedExtensions)};
+	}
+
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
 		const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
 		const vk::DebugUtilsMessageTypeFlagsEXT type,
@@ -81,6 +112,22 @@ class HelloTriangleApplication
 		std::cerr << "Validation layer: type" << to_string(type) << " mgs: " << pCallbackData->pMessage << std::endl;
 
 		return vk::False;
+	}
+
+	void setupDebugMessenger()
+	{
+		if constexpr (not isValidationLayersEnabled) return;
+
+		using enum vk::DebugUtilsMessageSeverityFlagBitsEXT;
+		using enum vk::DebugUtilsMessageTypeFlagBitsEXT;
+
+		constexpr vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
+			.messageSeverity = eVerbose | eWarning | eError,
+			.messageType = eGeneral | ePerformance | eValidation,
+			.pfnUserCallback = &debugCallback
+		};
+
+		m_debugMessenger = m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 	}
 
 	void createInstance()
@@ -99,31 +146,18 @@ class HelloTriangleApplication
 				throw std::runtime_error{"Failed to initialize validation layers"};
 		}
 
-		u32 glfwExtensionCount{};
-		const auto glfwExtensions{ glfwGetRequiredInstanceExtensions(&glfwExtensionCount) };
+		const auto requiredExtensions{ getRequiredExtensions() };
 
-		const auto extensionProperties{ m_context.enumerateInstanceExtensionProperties() };
-
-		std::println("Available GLFW extensions:");
-		std::ranges::for_each(extensionProperties, [](const auto& extension)
+		if (checkIfRequiredExtensionSupported(requiredExtensions).has_value())
 		{
-			std::cout << extension.extensionName << '\n'; //Через println выдает какую-то белиберду
-		});
-		std::cout << std::endl;
+			std::ostringstream ss;
 
-		for(u32 i{0}; i < glfwExtensionCount; ++i)
-		{
-			if (std::ranges::none_of(extensionProperties,
-				[glfwExtension{glfwExtensions[i]}](auto const& extensionProperty)
-				{
-					//std::println("{}", glfwExtension);
-					return std::strcmp(extensionProperty.extensionName, glfwExtension) == 0;
-				}))
-				throw std::runtime_error{"Required GLFW extension not supported: " + std::string(glfwExtensions[i])};
+			ss << "Error: required extension are not supported:  \"" << requiredExtensions.data() << "\" " << std::endl;
 
+			throw std::runtime_error{ss.str()};
 		}
 
-		const auto requiredExtensions{ getRequiredExtensions() };
+
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
@@ -134,7 +168,6 @@ class HelloTriangleApplication
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
-
 	}
 
 	void initWindow(const i32 width, const i32 height)
@@ -153,6 +186,7 @@ class HelloTriangleApplication
 	void initVulkan()
 	{
 		createInstance();
+		setupDebugMessenger();
 	}
 
 	void mainLoop()
@@ -185,6 +219,8 @@ private:
 
 	vk::raii::Context m_context;
 	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
+
+	vk::raii::DebugUtilsMessengerEXT m_debugMessenger{nullptr};
 };
 
 int main()
