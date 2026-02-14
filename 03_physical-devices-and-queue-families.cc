@@ -50,7 +50,6 @@ class HelloTriangleApplication
 			}
 		)};
 
-
 		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
 			[&](const std::string_view validationLayer)
 			{
@@ -85,7 +84,6 @@ class HelloTriangleApplication
 
 			for (const auto &[extensionName, specVersion] : extensionPropertiesVec)
 				result.insert(extensionName);
-
 
 			return result;
 		})};
@@ -157,8 +155,6 @@ class HelloTriangleApplication
 			throw std::runtime_error{ss.str()};
 		}
 
-
-
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
 			.enabledLayerCount = validationLayers.size(),
@@ -168,6 +164,48 @@ class HelloTriangleApplication
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
+	}
+
+	void pickPhysicalDevice()
+	{
+		const auto devices{ m_instance.enumeratePhysicalDevices() };
+
+		if (devices.empty())
+			throw std::runtime_error{"Failed to find GPUs with Vulkan support!"};
+
+		vk::raii::PhysicalDevice iGpu{nullptr};
+
+		for (const auto &device : devices)
+		{
+			const auto deviceProps{ device.getProperties() };
+			const auto deviceFeatures{ device.getFeatures() };
+
+			if (not (deviceFeatures.geometryShader and deviceProps.apiVersion >= VK_API_VERSION_1_3) ) continue;
+
+			using vk::PhysicalDeviceType::eDiscreteGpu;
+			if (deviceProps.deviceType == eDiscreteGpu)
+			{
+				m_physicalDevice = device;
+				return;
+			}
+
+			iGpu = device;
+
+		}
+
+		if (iGpu != nullptr)
+			m_physicalDevice = iGpu;
+		else
+			throw std::runtime_error{"Failed to find a suitable GPU device!"};
+	}
+
+	static bool isDeviceSuitable(const vk::raii::PhysicalDevice &physicalDevice)
+	{
+		const auto deviceProps{ physicalDevice.getProperties() };
+		const auto deviceFeatures{ physicalDevice.getFeatures() };
+
+		using vk::PhysicalDeviceType::eDiscreteGpu;
+		return deviceProps.deviceType == eDiscreteGpu and deviceFeatures.geometryShader;
 	}
 
 	void initWindow(const i32 width, const i32 height)
@@ -187,6 +225,7 @@ class HelloTriangleApplication
 	{
 		createInstance();
 		setupDebugMessenger();
+		pickPhysicalDevice();
 	}
 
 	void mainLoop()
@@ -221,6 +260,8 @@ private:
 	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
 
 	vk::raii::DebugUtilsMessengerEXT m_debugMessenger{nullptr};
+
+	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
 };
 
 int main()
