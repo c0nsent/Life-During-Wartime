@@ -166,47 +166,29 @@ class HelloTriangleApplication
 		m_instance = vk::raii::Instance{m_context, createInfo};
 	}
 
-	void pickPhysicalDevice()
+	static auto pickPhysicalDevice(const vk::raii::Instance &instance) -> std::optional<vk::PhysicalDevice>
 	{
-		const auto devices{ m_instance.enumeratePhysicalDevices() };
+		const std::vector devices{instance.enumeratePhysicalDevices()};
 
-		if (devices.empty())
-			throw std::runtime_error{"Failed to find GPUs with Vulkan support!"};
+		if (devices.empty()) return {};
 
-		vk::raii::PhysicalDevice iGpu{nullptr};
+		std::optional<vk::PhysicalDevice> iGpu;
 
 		for (const auto &device : devices)
 		{
-			const auto deviceProps{ device.getProperties() };
-			const auto deviceFeatures{ device.getFeatures() };
+			const auto &deviceProps{ device.getProperties() };
 
-			if (not (deviceFeatures.geometryShader and deviceProps.apiVersion >= VK_API_VERSION_1_3) ) continue;
+			if (not (device.getFeatures().geometryShader and deviceProps.apiVersion >= VK_API_VERSION_1_3) ) continue;
 
 			using vk::PhysicalDeviceType::eDiscreteGpu;
-			if (deviceProps.deviceType == eDiscreteGpu)
-			{
-				m_physicalDevice = device;
-				return;
-			}
+			if (deviceProps.deviceType == eDiscreteGpu) return device;
 
 			iGpu = device;
-
 		}
 
-		if (iGpu != nullptr)
-			m_physicalDevice = iGpu;
-		else
-			throw std::runtime_error{"Failed to find a suitable GPU device!"};
+		return iGpu;
 	}
 
-	static bool isDeviceSuitable(const vk::raii::PhysicalDevice &physicalDevice)
-	{
-		const auto deviceProps{ physicalDevice.getProperties() };
-		const auto deviceFeatures{ physicalDevice.getFeatures() };
-
-		using vk::PhysicalDeviceType::eDiscreteGpu;
-		return deviceProps.deviceType == eDiscreteGpu and deviceFeatures.geometryShader;
-	}
 
 	void initWindow(const i32 width, const i32 height)
 	{
@@ -225,7 +207,10 @@ class HelloTriangleApplication
 	{
 		createInstance();
 		setupDebugMessenger();
-		pickPhysicalDevice();
+
+		m_physicalDevice = vk::raii::PhysicalDevice{m_instance, pickPhysicalDevice(m_instance).or_else([]{return nullptr})};
+
+		if
 	}
 
 	void mainLoop()
