@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -166,13 +167,14 @@ class HelloTriangleApplication
 		m_instance = vk::raii::Instance{m_context, createInfo};
 	}
 
-	static auto pickPhysicalDevice(const vk::raii::Instance &instance) -> std::optional<vk::PhysicalDevice>
+	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
+		-> std::expected<vk::raii::PhysicalDevice, std::runtime_error>
 	{
-		const std::vector devices{instance.enumeratePhysicalDevices()};
+		const auto devices{instance.enumeratePhysicalDevices()};
 
-		if (devices.empty()) return {};
+		if (devices.empty()) return std::unexpected{std::runtime_error{"Failed to find GPUs"}};
 
-		std::optional<vk::PhysicalDevice> iGpu;
+		vk::raii::PhysicalDevice iGpu{nullptr};
 
 		for (const auto &device : devices)
 		{
@@ -208,9 +210,12 @@ class HelloTriangleApplication
 		createInstance();
 		setupDebugMessenger();
 
-		m_physicalDevice = vk::raii::PhysicalDevice{m_instance, pickPhysicalDevice(m_instance).or_else([]{return nullptr})};
-
-		if
+		//m_physicalDevice = vk::raii::PhysicalDevice{m_instance, pickPhysicalDevice(m_instance).or_else([]{return vk::PhysicalDevice{nullptr};}).value();
+		auto pickedDevice = pickPhysicalDevice(m_instance);
+		if (pickedDevice)
+			m_physicalDevice = pickedDevice.value();
+		else
+			throw pickedDevice.error();
 	}
 
 	void mainLoop()
