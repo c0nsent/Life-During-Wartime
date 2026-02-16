@@ -168,11 +168,11 @@ class HelloTriangleApplication
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
-		-> std::expected<vk::raii::PhysicalDevice, std::runtime_error>
+		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
 	{
 		const auto devices{instance.enumeratePhysicalDevices()};
 
-		if (devices.empty()) return std::unexpected{std::runtime_error{"Failed to find GPUs"}};
+		if (devices.empty()) return std::unexpected{"Failed to find GPUs"};
 
 		vk::raii::PhysicalDevice iGpu{nullptr};
 
@@ -189,6 +189,55 @@ class HelloTriangleApplication
 		}
 
 		return iGpu;
+	}
+
+	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev) -> std::optional<vk::DeviceCreateInfo>
+	{
+		const auto queueFamilyProps{physDev.getQueueFamilyProperties()};
+
+		const auto graphicsIndex{std::invoke([queueFamilyProps, qfpSize{queueFamilyProps.size()}]
+		{
+			u32 index{static_cast<u32>(qfpSize)};
+
+			for (size_t i{0}; i < qfpSize; ++i)
+			{
+				using vk::QueueFlagBits::eGraphics;
+				if ((queueFamilyProps[i].queueFlags & eGraphics) == eGraphics) index = i;
+			}
+			return index;
+		} )};
+
+		if (graphicsIndex == queueFamilyProps.size()) return {};
+
+		constexpr auto queuePriority{0.5f};
+
+		vk::DeviceQueueCreateInfo devQueueCreateInfo{
+			.queueFamilyIndex = graphicsIndex,
+			.queueCount = 1,
+			.pQueuePriorities = &queuePriority
+		};
+
+		vk::PhysicalDeviceFeatures physDevFeatures;
+
+		const vk::StructureChain featureChain{
+			vk::PhysicalDeviceFeatures2{},
+			vk::PhysicalDeviceVulkan13Features{.dynamicRendering = true},
+			vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT{.extendedDynamicState = true}
+		};
+
+		constexpr std::array deviceExtensions {
+			vk::KHRSwapchainExtensionName
+		};
+
+		const vk::DeviceCreateInfo devCreateInfo{
+			.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+			.queueCreateInfoCount = 1,
+			.pQueueCreateInfos = &devQueueCreateInfo,
+			.enabledExtensionCount = static_cast<u32>(deviceExtensions.size()),
+			.ppEnabledExtensionNames = deviceExtensions.data(),
+		};
+
+		return devCreateInfo;
 	}
 
 	void initWindow(const i32 width, const i32 height)
@@ -209,10 +258,15 @@ class HelloTriangleApplication
 		createInstance();
 		setupDebugMessenger();
 
-		if (auto pickedDevice = pickPhysicalDevice(m_instance))
+		if (auto pickedDevice{pickPhysicalDevice(m_instance)})
 			m_physicalDevice = pickedDevice.value();
 		else
-			throw pickedDevice.error();
+			throw std::runtime_error{pickedDevice.error().data()};
+
+		if (const auto devCreateInfo{createLogicalDeviceInfo(m_physicalDevice)})
+			m_device = vk::raii::Device{m_physicalDevice, devCreateInfo.value()};
+		else
+			throw std::runtime_error{"Can't create logical device"};
 	}
 
 	void mainLoop()
@@ -249,6 +303,7 @@ private:
 	vk::raii::DebugUtilsMessengerEXT m_debugMessenger{nullptr};
 
 	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
+	vk::raii::Device m_device{nullptr};
 };
 
 int main()
