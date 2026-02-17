@@ -1,7 +1,10 @@
 #include <vulkan/vulkan_raii.hpp>
 
+#define VK_USE_PLATFORM_WAYLAND_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WAYLAND
+#include <GLFW/glfw3native.h>
 
 #include <array>
 #include <cstdint>
@@ -9,6 +12,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <print>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
@@ -274,6 +278,8 @@ class HelloTriangleApplication
 			throw std::runtime_error{"Can't create logical device"};
 
 		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
+
+		VkWaylandSurfaceCreateInfoKHR
 	}
 
 	void mainLoop()
@@ -308,6 +314,7 @@ private:
 	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
 
 	vk::raii::DebugUtilsMessengerEXT m_debugMessenger{nullptr};
+	vk::raii::SurfaceKHR surface{nullptr};
 
 	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
 	vk::raii::Device m_device{nullptr};
