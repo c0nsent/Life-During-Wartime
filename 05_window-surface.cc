@@ -1,6 +1,5 @@
-#include <vulkan/vulkan_raii.hpp>
-
 #define VK_USE_PLATFORM_WAYLAND_KHR
+#include <vulkan/vulkan_raii.hpp>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WAYLAND
@@ -168,6 +167,17 @@ class HelloTriangleApplication
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
+
+		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
+			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
+		};
+
+		//Ебанная сишная хуйня я в рот ебал
+
+		if (m_instance.createWaylandSurfaceKHR(surfaceCreateInfo))
+
+		if (vkCreateWaylandSurfaceKHR(m_instance., &surfaceCreateInfo, nullptr, m_surface) != VK_SUCCESS)
+			throw std::runtime_error{"Failed to create VK surface"};
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
@@ -192,11 +202,6 @@ class HelloTriangleApplication
 		}
 
 		return iGpu;
-	}
-
-	static auto findGraphicsIndex(const std::vector<vk::QueueFamilyProperties> &queueFamilyProps)  -> std::optional<u32>
-	{
-
 	}
 
 	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
@@ -279,7 +284,6 @@ class HelloTriangleApplication
 
 		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
 
-		VkWaylandSurfaceCreateInfoKHR
 	}
 
 	void mainLoop()
@@ -320,6 +324,7 @@ private:
 	vk::raii::Device m_device{nullptr};
 
 	vk::raii::Queue m_graphicsQueue{nullptr};
+	vk::raii::SurfaceKHR m_surface{nullptr};
 };
 
 int main()

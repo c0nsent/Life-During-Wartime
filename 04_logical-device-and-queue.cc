@@ -190,11 +190,6 @@ class HelloTriangleApplication
 		return iGpu;
 	}
 
-	static auto findGraphicsIndex(const std::vector<vk::QueueFamilyProperties> &queueFamilyProps)  -> std::optional<u32>
-	{
-
-	}
-
 	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
 		-> std::optional<vk::DeviceCreateInfo>
 	{
