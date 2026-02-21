@@ -14,6 +14,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.hpp>
 
 
 using i32 = std::int32_t;
@@ -30,7 +32,7 @@ constexpr auto requiredValidationLayerNames{
 #ifdef NDEBUG
 constexpr bool isValidationLayersEnabled{ false };
 #else
-constexpr bool isValidationLayersEnabled{ true };
+constexpr bool IS_VALIDATION_LAYERS_ENABLED{ true };
 #endif
 
 
@@ -69,12 +71,12 @@ class HelloTriangleApplication
 
 		std::vector<const char *> extensions{ glfwExtensions, glfwExtensions + glfwExtensionCount };
 
-		if constexpr(isValidationLayersEnabled) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
+		if constexpr(IS_VALIDATION_LAYERS_ENABLED) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
 
 		return extensions;
 	}
 
-	std::optional<std::vector<const char *>> checkIfRequiredExtensionSupported(const std::vector<const char *> &requiredExtensions)
+	std::optional<std::vector<const char *>> checkExtensionSupport(const std::vector<const char *> &requiredExtensions)
 	{
 		const auto availableExtensions{ std::invoke([&]
 		{
@@ -113,9 +115,9 @@ class HelloTriangleApplication
 		return vk::False;
 	}
 
-	void setupDebugMessenger()
+	void initDebugMessenger()
 	{
-		if constexpr (not isValidationLayersEnabled) return;
+		if constexpr (not IS_VALIDATION_LAYERS_ENABLED) return;
 
 		using enum vk::DebugUtilsMessageSeverityFlagBitsEXT;
 		using enum vk::DebugUtilsMessageTypeFlagBitsEXT;
@@ -129,7 +131,8 @@ class HelloTriangleApplication
 		m_debugMessenger = m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 	}
 
-	void createInstance()
+
+	vk::ResultValue<vk::raii::Instance> createInstance()
 	{
 		constexpr vk::ApplicationInfo appInfo{
 			.pApplicationName = "Hello Triangle",
@@ -139,7 +142,7 @@ class HelloTriangleApplication
 			.apiVersion = vk::ApiVersion14
 		};
 
-		if constexpr(isValidationLayersEnabled)
+		if constexpr(IS_VALIDATION_LAYERS_ENABLED)
 		{
 			if (not initValidationLayers())
 				throw std::runtime_error{"Failed to initialize validation layers"};
@@ -147,7 +150,7 @@ class HelloTriangleApplication
 
 		const auto requiredExtensions{ getRequiredExtensions() };
 
-		if (checkIfRequiredExtensionSupported(requiredExtensions).has_value())
+		if (checkExtensionSupport(requiredExtensions).has_value())
 		{
 			std::ostringstream ss;
 
@@ -207,7 +210,7 @@ class HelloTriangleApplication
 	void initVulkan()
 	{
 		createInstance();
-		setupDebugMessenger();
+		initDebugMessenger();
 
 		if (auto pickedDevice = pickPhysicalDevice(m_instance))
 			m_physicalDevice = pickedDevice.value();

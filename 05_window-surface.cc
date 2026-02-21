@@ -13,12 +13,11 @@
 #include <functional>
 #include <iostream>
 #include <optional>
-#include <print>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
+#include <stdfloat>
 #include <unordered_set>
-
 
 using i32 = std::int32_t;
 using u32 = std::uint32_t;
@@ -27,45 +26,43 @@ constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
 
-constexpr auto requiredValidationLayerNames{
+constexpr auto REQUIRED_VALIDATION_LAYERS{
 	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
 };
 
 #ifdef NDEBUG
-constexpr bool isValidationLayersEnabled{ false };
+constexpr bool IS_VALIDATION_LAYERS_ENABLED{ false };
 #else
-constexpr bool isValidationLayersEnabled{ true };
+constexpr bool IS_VALIDATION_LAYERS_ENABLED{ true };
 #endif
 
 
 class HelloTriangleApplication
 {
-
-
 	template <std::size_t Size>
-	[[nodiscard]] auto checkValidationLayersSupport(const std::array<const char *, Size> requiredValidationLayersName ) noexcept
+	[[nodiscard]] auto checkValidationLayersSupport(const std::array<const char *, Size> requiredValidationLayerNames )
 		-> std::optional<std::string_view>
 	{
-		if (requiredValidationLayersName.empty()) return {};
+		if (Size == 0) return {};
 
 		const auto availableLayersName{ std::invoke( [&]
-			{
-				const auto layerPropertiesResult{ m_context.enumerateInstanceLayerProperties()};
+		{
+			const auto layerPropertiesResult{ m_context.enumerateInstanceLayerProperties()};
+			std::unordered_set<std::string_view> layerNames;
 
-				if (not layerPropertiesResult.has_value())
-					return "Failed to enumerate instance's layer properties";
+			if (layerPropertiesResult.result != vk::Result::eSuccess) return layerNames;
 
-				const auto &layerProperties{ layerPropertiesResult.value };
-				std::unordered_set<std::string_view> layerNames;
+			const auto &layerProperties{ layerPropertiesResult.value };
 
-					layerNames.reserve(layerProperties.size());
+			layerNames.reserve(layerProperties.size());
 
-					for (const auto &layerProp : layerProperties)
-						layerNames.insert(layerProp.layerName);
+			for (const auto &layerProp : layerProperties)
+				layerNames.insert(layerProp.layerName);
 
 			return layerNames;
-			}
-		)};
+		} )};
+
+		if (availableLayersName.empty()) return "Failed to enumerate instance's layer properties";
 
 		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(requiredValidationLayerNames,
 			[&](const std::string_view validationLayer)
@@ -85,38 +82,39 @@ class HelloTriangleApplication
 
 		std::vector<const char *> extensions{ glfwExtensions, glfwExtensions + glfwExtensionCount };
 
-		if constexpr(isValidationLayersEnabled) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
+		if constexpr(IS_VALIDATION_LAYERS_ENABLED) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
 
 		return extensions;
 	}
 
-	std::optional<std::vector<const char *>> checkIfRequiredExtensionSupported(const std::vector<const char *> &requiredExtensions)
+	auto checkExtensionSupport(const std::vector<const char *> &requiredExtensions) -> std::optional<std::string_view>
 	{
-		const auto availableExtensions{ std::invoke([&]
+		if (requiredExtensions.empty()) return "No required extension provided";
+
+		const auto availableExtensionNames{ std::invoke([&]
 		{
-			const auto extensionPropertiesVec{ m_context.enumerateInstanceExtensionProperties() };
+			const auto extensionPropertiesResult{ m_context.enumerateInstanceExtensionProperties() };
+			std::unordered_set<std::string_view> extensionNames;
 
-			std::unordered_set<std::string_view> result;
-			result.reserve(requiredExtensions.size());
+			if (extensionPropertiesResult.result != vk::Result::eSuccess) return extensionNames;
 
-			for (const auto &[extensionName, specVersion] : extensionPropertiesVec)
-				result.insert(extensionName);
+			const auto &extensionProperties{ extensionPropertiesResult.value };
+			extensionNames.reserve(extensionProperties.size());
 
-			return result;
+			for (const auto &[extensionName, specVersion] : extensionProperties)
+				extensionNames.insert(extensionName);
+
+			return extensionNames;
 		})};
 
-		std::vector<const char *> unsupportedExtensions;
-		unsupportedExtensions.reserve(requiredExtensions.size());
+		if (availableExtensionNames.empty()) return "No extensions available";
 
-		std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
+		const bool isAllRequiredExtensionsAvailable{std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
 		{
-			if (availableExtensions.contains(requiredExtension)) return true;
+			return availableExtensionNames.contains(requiredExtension);
+		})};
 
-			unsupportedExtensions.emplace_back(requiredExtension);
-			return false;
-		});
-
-		return unsupportedExtensions.empty() ? std::nullopt : std::optional{std::move(unsupportedExtensions)};
+		return isAllRequiredExtensionsAvailable ? std::nullopt : std::optional{"Not all required extensions available"};
 	}
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
@@ -129,9 +127,9 @@ class HelloTriangleApplication
 		return vk::False;
 	}
 
-	void setupDebugMessenger()
+	auto initDebugMessenger() const -> std::optional<vk::raii::DebugUtilsMessengerEXT>
 	{
-		if constexpr (not isValidationLayersEnabled) return;
+		if constexpr (not IS_VALIDATION_LAYERS_ENABLED) return {};
 
 		using enum vk::DebugUtilsMessageSeverityFlagBitsEXT;
 		using enum vk::DebugUtilsMessageTypeFlagBitsEXT;
@@ -142,10 +140,13 @@ class HelloTriangleApplication
 			.pfnUserCallback = &debugCallback
 		};
 
-		m_debugMessenger = m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
+		auto result{m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT)};
+
+		return result.result == vk::Result::eSuccess ? std::optional{std::move(result.value)} : std::nullopt;
 	}
 
-	void createInstance()
+
+	auto createInstance() -> std::expected<vk::raii::Instance, std::string_view>
 	{
 		constexpr vk::ApplicationInfo appInfo{
 			.pApplicationName = "Hello Triangle",
@@ -155,38 +156,35 @@ class HelloTriangleApplication
 			.apiVersion = vk::ApiVersion14
 		};
 
-		if constexpr(isValidationLayersEnabled)
+		if constexpr(IS_VALIDATION_LAYERS_ENABLED)
 		{
-			if (not initValidationLayers())
-				throw std::runtime_error{"Failed to initialize validation layers"};
+			const auto isSupported{checkValidationLayersSupport(REQUIRED_VALIDATION_LAYERS)};
+
+			if ( not isSupported)
+				return std::unexpected{isSupported.value()};
 		}
 
 		const auto requiredExtensions{ getRequiredExtensions() };
+		if (requiredExtensions.empty())
+			return std::unexpected{"Required extensions not found"};
 
-		if (checkIfRequiredExtensionSupported(requiredExtensions).has_value())
-		{
-			std::ostringstream ss;
-
-			ss << "Error: required extension are not supported:  \"" << requiredExtensions.data() << "\" " << std::endl;
-
-			throw std::runtime_error{ss.str()};
-		}
+		if (const auto isSupported{checkExtensionSupport(requiredExtensions)}; not isSupported)
+			return std::unexpected{isSupported.value()};
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
-			.enabledLayerCount = requiredValidationLayerNames.size(),
-			.ppEnabledLayerNames = requiredValidationLayerNames.data(),
+			.enabledLayerCount = REQUIRED_VALIDATION_LAYERS.size(),
+			.ppEnabledLayerNames = REQUIRED_VALIDATION_LAYERS.data(),
 			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
 			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};
 
-		m_instance = vk::raii::Instance{m_context, createInfo};
+		auto instanceResult{ m_context.createInstance(createInfo) };
 
-		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
-			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
-		};
+		if (instanceResult.result == vk::Result::eSuccess) [[likely]]
+			return std::move(instanceResult.value);
 
-		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);
+		return std::unexpected{"Failed to create an instance"};
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
@@ -263,7 +261,7 @@ class HelloTriangleApplication
 	void initVulkan()
 	{
 		createInstance();
-		setupDebugMessenger();
+		initDebugMessenger();
 
 		if (const auto pickedDevice{pickPhysicalDevice(m_instance)})
 			m_physicalDevice = pickedDevice.value();
@@ -293,6 +291,12 @@ class HelloTriangleApplication
 
 		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
 
+
+		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
+			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
+		};
+
+		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);
 	}
 
 	void mainLoop()

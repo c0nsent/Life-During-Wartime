@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <stdexcept>
 #include <print>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.hpp>
 
 
 using i32 = std::int32_t;
@@ -19,7 +21,7 @@ constexpr i32 HEIGHT = 600;
 
 class HelloTriangleApplication
 {
-	void createInstance()
+	vk::ResultValue<vk::raii::Instance> createInstance()
 	{
 		constexpr vk::ApplicationInfo appInfo{
 			.pApplicationName = "Hello Triangle",
