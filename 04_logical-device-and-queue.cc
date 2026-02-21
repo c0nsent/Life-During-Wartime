@@ -22,7 +22,7 @@ constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
 
-constexpr auto validationLayers{
+constexpr auto requiredValidationLayerNames{
 	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
 };
 
@@ -50,7 +50,7 @@ class HelloTriangleApplication
 			}
 		)};
 
-		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(requiredValidationLayerNames,
 			[&](const std::string_view validationLayer)
 			{
 				return availableLayersName.contains(validationLayer);
@@ -157,8 +157,8 @@ class HelloTriangleApplication
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
-			.enabledLayerCount = validationLayers.size(),
-			.ppEnabledLayerNames = validationLayers.data(),
+			.enabledLayerCount = requiredValidationLayerNames.size(),
+			.ppEnabledLayerNames = requiredValidationLayerNames.data(),
 			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
 			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};

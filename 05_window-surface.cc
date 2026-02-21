@@ -1,5 +1,7 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
+#define VULKAN_HPP_NO_EXCEPTIONS
 #include <vulkan/vulkan_raii.hpp>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WAYLAND
@@ -25,7 +27,7 @@ constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
 
-constexpr auto validationLayers{
+constexpr auto requiredValidationLayerNames{
 	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
 };
 
@@ -38,29 +40,41 @@ constexpr bool isValidationLayersEnabled{ true };
 
 class HelloTriangleApplication
 {
-	[[nodiscard]] bool initValidationLayers() const
+
+
+	template <std::size_t Size>
+	[[nodiscard]] auto checkValidationLayersSupport(const std::array<const char *, Size> requiredValidationLayersName ) noexcept
+		-> std::optional<std::string_view>
 	{
+		if (requiredValidationLayersName.empty()) return {};
+
 		const auto availableLayersName{ std::invoke( [&]
 			{
-				const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
+				const auto layerPropertiesResult{ m_context.enumerateInstanceLayerProperties()};
 
-				std::unordered_set<std::string_view> result;
-				result.reserve(availableLayerProps.size());
+				if (not layerPropertiesResult.has_value())
+					return "Failed to enumerate instance's layer properties";
 
-				for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
+				const auto &layerProperties{ layerPropertiesResult.value };
+				std::unordered_set<std::string_view> layerNames;
 
-				return result;
+					layerNames.reserve(layerProperties.size());
+
+					for (const auto &layerProp : layerProperties)
+						layerNames.insert(layerProp.layerName);
+
+			return layerNames;
 			}
 		)};
 
-		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(requiredValidationLayerNames,
 			[&](const std::string_view validationLayer)
 			{
 				return availableLayersName.contains(validationLayer);
 			}
 		)};
 
-		return isAllRequiredLayersAvailable;
+		return isAllRequiredLayersAvailable ? std::nullopt : std::optional{"Failed to find all required validation layers"};
 	}
 
 
@@ -160,8 +174,8 @@ class HelloTriangleApplication
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
-			.enabledLayerCount = validationLayers.size(),
-			.ppEnabledLayerNames = validationLayers.data(),
+			.enabledLayerCount = requiredValidationLayerNames.size(),
+			.ppEnabledLayerNames = requiredValidationLayerNames.data(),
 			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
 			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};
@@ -172,12 +186,7 @@ class HelloTriangleApplication
 			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
 		};
 
-		//Ебанная сишная хуйня я в рот ебал
-
-		if (m_instance.createWaylandSurfaceKHR(surfaceCreateInfo))
-
-		if (vkCreateWaylandSurfaceKHR(m_instance., &surfaceCreateInfo, nullptr, m_surface) != VK_SUCCESS)
-			throw std::runtime_error{"Failed to create VK surface"};
+		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
