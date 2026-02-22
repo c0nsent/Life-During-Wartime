@@ -127,9 +127,9 @@ class HelloTriangleApplication
 		return vk::False;
 	}
 
-	auto initDebugMessenger() const -> std::optional<vk::raii::DebugUtilsMessengerEXT>
+	[[nodiscard]] auto createDebugMessenger() const noexcept -> std::optional<vk::raii::DebugUtilsMessengerEXT>
 	{
-		if constexpr (not IS_VALIDATION_LAYERS_ENABLED) return {};
+		if constexpr (not IS_VALIDATION_LAYERS_ENABLED) return std::nullopt;
 
 		using enum vk::DebugUtilsMessageSeverityFlagBitsEXT;
 		using enum vk::DebugUtilsMessageTypeFlagBitsEXT;
@@ -190,7 +190,14 @@ class HelloTriangleApplication
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
 		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
 	{
-		const auto devices{instance.enumeratePhysicalDevices()};
+		const auto devices{std::invoke([&instance]
+		{
+			auto physicalDevicesResult{instance.enumeratePhysicalDevices()};
+			if (physicalDevicesResult.result == vk::Result::eSuccess) [[likely]]
+				return std::move(physicalDevicesResult.value);
+
+			return std::vector<vk::raii::PhysicalDevice>{};
+		} )};
 
 		if (devices.empty()) return std::unexpected{"Failed to find GPUs"};
 
@@ -211,7 +218,7 @@ class HelloTriangleApplication
 		return iGpu;
 	}
 
-	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
+	static auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
 		-> std::optional<vk::DeviceCreateInfo>
 	{
 		constexpr auto queuePriority{0.5f};
@@ -245,28 +252,44 @@ class HelloTriangleApplication
 		return devCreateInfo;
 	}
 
-	void initWindow(const i32 width, const i32 height)
+
+	static auto createWindow(const i32 width, const i32 height, const std::string_view title) noexcept
+		-> std::expected<GLFWwindow *, std::string_view>
 	{
-		if (not glfwInit())
-			std::cerr << "Failed to initialize GLFW" << std::endl;
+		if (not glfwInit()) return std::unexpected{"Failed to initialize GLFW"};
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		m_window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
-		if (not m_window)
-			std::cerr << "Failed to create GLFW window" << std::endl;
+		const auto window{
+			glfwCreateWindow(width, height, title.data(), nullptr, nullptr)
+		};
+
+		if (window == nullptr) return std::unexpected{"Failed to create GLFW window"};
+
+		return window;;
 	}
 
-	void initVulkan()
+	auto initVulkan() -> std::optional<std::string_view>
 	{
-		createInstance();
-		initDebugMessenger();
 
-		if (const auto pickedDevice{pickPhysicalDevice(m_instance)})
-			m_physicalDevice = pickedDevice.value();
+		if (auto instanceExpected{createInstance()}; instanceExpected.has_value()) [[likely]]
+			m_instance = std::move(instanceExpected.value());
+		else [[unlikely]]
+			return instanceExpected.error();
+
+		if (auto DebugMessengerOpt{createDebugMessenger()}; DebugMessengerOpt.has_value()) [[likely]]
+			m_debugMessenger = std::move(DebugMessengerOpt.value());
+		else [[unlikely]]
+			return "Failed to create Vulkan debug messenger";
+
+
+
+
+		if (auto pickedDevice{pickPhysicalDevice(m_instance)})
+			m_physicalDevice = std::move(pickedDevice.value());
 		else
-			throw std::runtime_error{pickedDevice.error().data()};
+			return pickedDevice.error();
 
 		const u32 graphicsIndex{std::invoke([qfp = m_physicalDevice.getQueueFamilyProperties()]
 		{
@@ -285,10 +308,18 @@ class HelloTriangleApplication
 
 
 		if (const auto devCreateInfo{createLogicalDeviceInfo(m_physicalDevice, graphicsIndex)})
-			m_device = vk::raii::Device{m_physicalDevice, devCreateInfo.value()};
+			{
+				auto deviceResult{m_physicalDevice.createDevice(devCreateInfo.value())};
+				if (deviceResult.result == vk::Result::eSuccess)
+					m_device = std::move(deviceResult.value);
+				else
+					return "Failed to create logical device";
+			}
 		else
-			throw std::runtime_error{"Can't create logical device"};
+			return "Cannot create logical device initialization struct";
 
+
+		if (auto queueResult{vk::Queue};)
 		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
 
 
@@ -317,7 +348,7 @@ public:
 
 	void run(const i32 width, const i32 height)
 	{
-		initWindow(width, height);
+		m_window = initWindow(width, height);
 		initVulkan();
 		mainLoop();
 		cleanup();
