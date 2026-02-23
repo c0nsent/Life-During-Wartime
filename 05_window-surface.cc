@@ -158,18 +158,18 @@ class HelloTriangleApplication
 
 		if constexpr(IS_VALIDATION_LAYERS_ENABLED)
 		{
-			const auto isSupported{checkValidationLayersSupport(REQUIRED_VALIDATION_LAYERS)};
+			const auto hasError{checkValidationLayersSupport(REQUIRED_VALIDATION_LAYERS)};
 
-			if ( not isSupported)
-				return std::unexpected{isSupported.value()};
+			if (hasError)
+				return std::unexpected{hasError.value()};
 		}
 
 		const auto requiredExtensions{ getRequiredExtensions() };
 		if (requiredExtensions.empty())
 			return std::unexpected{"Required extensions not found"};
 
-		if (const auto isSupported{checkExtensionSupport(requiredExtensions)}; not isSupported)
-			return std::unexpected{isSupported.value()};
+		if (const auto hasError{checkExtensionSupport(requiredExtensions)}; hasError)
+			return std::unexpected{hasError.value()};
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
@@ -190,13 +190,13 @@ class HelloTriangleApplication
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
 		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
 	{
-		const auto devices{std::invoke([&instance]
+		const auto devices{std::invoke([&instance] -> std::vector<vk::raii::PhysicalDevice>
 		{
 			auto physicalDevicesResult{instance.enumeratePhysicalDevices()};
 			if (physicalDevicesResult.result == vk::Result::eSuccess) [[likely]]
 				return std::move(physicalDevicesResult.value);
 
-			return std::vector<vk::raii::PhysicalDevice>{};
+			return {};
 		} )};
 
 		if (devices.empty()) return std::unexpected{"Failed to find GPUs"};
@@ -218,18 +218,16 @@ class HelloTriangleApplication
 		return iGpu;
 	}
 
-	static auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
-		-> std::optional<vk::DeviceCreateInfo>
+	static auto createLogicalDeviceInfo(const u32 graphicsIndex)
+		-> vk::DeviceCreateInfo
 	{
 		constexpr auto queuePriority{0.5f};
 
-		vk::DeviceQueueCreateInfo devQueueCreateInfo{
+		const vk::DeviceQueueCreateInfo devQueueCreateInfo{
 			.queueFamilyIndex = graphicsIndex,
 			.queueCount = 1,
 			.pQueuePriorities = &queuePriority
 		};
-
-		vk::PhysicalDeviceFeatures physDevFeatures;
 
 		const vk::StructureChain featureChain{
 			vk::PhysicalDeviceFeatures2{},
@@ -270,9 +268,9 @@ class HelloTriangleApplication
 		return window;;
 	}
 
+
 	auto initVulkan() -> std::optional<std::string_view>
 	{
-
 		if (auto instanceExpected{createInstance()}; instanceExpected.has_value()) [[likely]]
 			m_instance = std::move(instanceExpected.value());
 		else [[unlikely]]
@@ -282,9 +280,6 @@ class HelloTriangleApplication
 			m_debugMessenger = std::move(DebugMessengerOpt.value());
 		else [[unlikely]]
 			return "Failed to create Vulkan debug messenger";
-
-
-
 
 		if (auto pickedDevice{pickPhysicalDevice(m_instance)})
 			m_physicalDevice = std::move(pickedDevice.value());
@@ -307,27 +302,23 @@ class HelloTriangleApplication
 		})};
 
 
-		if (const auto devCreateInfo{createLogicalDeviceInfo(m_physicalDevice, graphicsIndex)})
-			{
-				auto deviceResult{m_physicalDevice.createDevice(devCreateInfo.value())};
-				if (deviceResult.result == vk::Result::eSuccess)
-					m_device = std::move(deviceResult.value);
-				else
-					return "Failed to create logical device";
-			}
+		auto deviceResult{m_physicalDevice.createDevice(createLogicalDeviceInfo(graphicsIndex))};
+		if (deviceResult.result == vk::Result::eSuccess)
+			m_device = std::move(deviceResult.value);
 		else
-			return "Cannot create logical device initialization struct";
+		{
+			return "Failed to create logical device";
+		}
 
-
-		if (auto queueResult{vk::Queue};)
-		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
-
-
+		
+		m_graphicsQueue = m_device.getQueue(graphicsIndex, 0);
+		/*
 		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
 			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
 		};
 
-		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);
+		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);*/
+		return std::nullopt;
 	}
 
 	void mainLoop()
@@ -348,8 +339,15 @@ public:
 
 	void run(const i32 width, const i32 height)
 	{
-		m_window = initWindow(width, height);
-		initVulkan();
+		if (const auto windowExpected{createWindow(width, height, "Life During Wartime")}; windowExpected.has_value())
+			m_window = windowExpected.value();
+		else
+			std::cerr << windowExpected.error() << std::endl;
+		if (auto hasError{initVulkan()}; hasError)
+		{
+			std::cerr << hasError.value() << std::endl;
+			std::abort();
+		}
 		mainLoop();
 		cleanup();
 	}
