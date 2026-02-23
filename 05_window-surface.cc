@@ -1,7 +1,5 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
-#define VULKAN_HPP_NO_EXCEPTIONS
 #include <vulkan/vulkan_raii.hpp>
-
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WAYLAND
@@ -13,11 +11,12 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <print>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
-#include <stdfloat>
 #include <unordered_set>
+
 
 using i32 = std::int32_t;
 using u32 = std::uint32_t;
@@ -26,52 +25,42 @@ constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
 
-constexpr auto REQUIRED_VALIDATION_LAYERS{
+constexpr auto validationLayers{
 	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
 };
 
 #ifdef NDEBUG
-constexpr bool IS_VALIDATION_LAYERS_ENABLED{ false };
+constexpr bool isValidationLayersEnabled{ false };
 #else
-constexpr bool IS_VALIDATION_LAYERS_ENABLED{ true };
+constexpr bool isValidationLayersEnabled{ true };
 #endif
 
 
 class HelloTriangleApplication
 {
-	template <std::size_t Size>
-	[[nodiscard]] auto checkValidationLayersSupport(const std::array<const char *, Size> requiredValidationLayerNames )
-		-> std::optional<std::string_view>
+	[[nodiscard]] bool initValidationLayers() const
 	{
-		if (Size == 0) return {};
-
 		const auto availableLayersName{ std::invoke( [&]
-		{
-			const auto layerPropertiesResult{ m_context.enumerateInstanceLayerProperties()};
-			std::unordered_set<std::string_view> layerNames;
+			{
+				const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
 
-			if (layerPropertiesResult.result != vk::Result::eSuccess) return layerNames;
+				std::unordered_set<std::string_view> result;
+				result.reserve(availableLayerProps.size());
 
-			const auto &layerProperties{ layerPropertiesResult.value };
+				for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
 
-			layerNames.reserve(layerProperties.size());
+				return result;
+			}
+		)};
 
-			for (const auto &layerProp : layerProperties)
-				layerNames.insert(layerProp.layerName);
-
-			return layerNames;
-		} )};
-
-		if (availableLayersName.empty()) return "Failed to enumerate instance's layer properties";
-
-		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(requiredValidationLayerNames,
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
 			[&](const std::string_view validationLayer)
 			{
 				return availableLayersName.contains(validationLayer);
 			}
 		)};
 
-		return isAllRequiredLayersAvailable ? std::nullopt : std::optional{"Failed to find all required validation layers"};
+		return isAllRequiredLayersAvailable;
 	}
 
 
@@ -82,39 +71,38 @@ class HelloTriangleApplication
 
 		std::vector<const char *> extensions{ glfwExtensions, glfwExtensions + glfwExtensionCount };
 
-		if constexpr(IS_VALIDATION_LAYERS_ENABLED) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
+		if constexpr(isValidationLayersEnabled) extensions.emplace_back(vk::EXTDebugUtilsExtensionName);
 
 		return extensions;
 	}
 
-	auto checkExtensionSupport(const std::vector<const char *> &requiredExtensions) -> std::optional<std::string_view>
+	std::optional<std::vector<const char *>> checkIfRequiredExtensionSupported(const std::vector<const char *> &requiredExtensions)
 	{
-		if (requiredExtensions.empty()) return "No required extension provided";
-
-		const auto availableExtensionNames{ std::invoke([&]
+		const auto availableExtensions{ std::invoke([&]
 		{
-			const auto extensionPropertiesResult{ m_context.enumerateInstanceExtensionProperties() };
-			std::unordered_set<std::string_view> extensionNames;
+			const auto extensionPropertiesVec{ m_context.enumerateInstanceExtensionProperties() };
 
-			if (extensionPropertiesResult.result != vk::Result::eSuccess) return extensionNames;
+			std::unordered_set<std::string_view> result;
+			result.reserve(requiredExtensions.size());
 
-			const auto &extensionProperties{ extensionPropertiesResult.value };
-			extensionNames.reserve(extensionProperties.size());
+			for (const auto &[extensionName, specVersion] : extensionPropertiesVec)
+				result.insert(extensionName);
 
-			for (const auto &[extensionName, specVersion] : extensionProperties)
-				extensionNames.insert(extensionName);
-
-			return extensionNames;
+			return result;
 		})};
 
-		if (availableExtensionNames.empty()) return "No extensions available";
+		std::vector<const char *> unsupportedExtensions;
+		unsupportedExtensions.reserve(requiredExtensions.size());
 
-		const bool isAllRequiredExtensionsAvailable{std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
+		std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
 		{
-			return availableExtensionNames.contains(requiredExtension);
-		})};
+			if (availableExtensions.contains(requiredExtension)) return true;
 
-		return isAllRequiredExtensionsAvailable ? std::nullopt : std::optional{"Not all required extensions available"};
+			unsupportedExtensions.emplace_back(requiredExtension);
+			return false;
+		});
+
+		return unsupportedExtensions.empty() ? std::nullopt : std::optional{std::move(unsupportedExtensions)};
 	}
 
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
@@ -127,9 +115,9 @@ class HelloTriangleApplication
 		return vk::False;
 	}
 
-	[[nodiscard]] auto createDebugMessenger() const noexcept -> std::optional<vk::raii::DebugUtilsMessengerEXT>
+	void setupDebugMessenger()
 	{
-		if constexpr (not IS_VALIDATION_LAYERS_ENABLED) return std::nullopt;
+		if constexpr (not isValidationLayersEnabled) return;
 
 		using enum vk::DebugUtilsMessageSeverityFlagBitsEXT;
 		using enum vk::DebugUtilsMessageTypeFlagBitsEXT;
@@ -140,13 +128,10 @@ class HelloTriangleApplication
 			.pfnUserCallback = &debugCallback
 		};
 
-		auto result{m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT)};
-
-		return result.result == vk::Result::eSuccess ? std::optional{std::move(result.value)} : std::nullopt;
+		m_debugMessenger = m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 	}
 
-
-	auto createInstance() -> std::expected<vk::raii::Instance, std::string_view>
+	void createInstance()
 	{
 		constexpr vk::ApplicationInfo appInfo{
 			.pApplicationName = "Hello Triangle",
@@ -156,48 +141,49 @@ class HelloTriangleApplication
 			.apiVersion = vk::ApiVersion14
 		};
 
-		if constexpr(IS_VALIDATION_LAYERS_ENABLED)
+		if constexpr(isValidationLayersEnabled)
 		{
-			const auto hasError{checkValidationLayersSupport(REQUIRED_VALIDATION_LAYERS)};
-
-			if (hasError)
-				return std::unexpected{hasError.value()};
+			if (not initValidationLayers())
+				throw std::runtime_error{"Failed to initialize validation layers"};
 		}
 
 		const auto requiredExtensions{ getRequiredExtensions() };
-		if (requiredExtensions.empty())
-			return std::unexpected{"Required extensions not found"};
 
-		if (const auto hasError{checkExtensionSupport(requiredExtensions)}; hasError)
-			return std::unexpected{hasError.value()};
+		if (checkIfRequiredExtensionSupported(requiredExtensions).has_value())
+		{
+			std::ostringstream ss;
+
+			ss << "Error: required extension are not supported:  \"" << requiredExtensions.data() << "\" " << std::endl;
+
+			throw std::runtime_error{ss.str()};
+		}
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
-			.enabledLayerCount = REQUIRED_VALIDATION_LAYERS.size(),
-			.ppEnabledLayerNames = REQUIRED_VALIDATION_LAYERS.data(),
+			.enabledLayerCount = validationLayers.size(),
+			.ppEnabledLayerNames = validationLayers.data(),
 			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
 			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};
 
-		auto instanceResult{ m_context.createInstance(createInfo) };
+		m_instance = vk::raii::Instance{m_context, createInfo};
 
-		if (instanceResult.result == vk::Result::eSuccess) [[likely]]
-			return std::move(instanceResult.value);
+		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
+			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
+		};
 
-		return std::unexpected{"Failed to create an instance"};
+		//Ебанная сишная хуйня я в рот ебал
+
+		/*if (m_instance.createWaylandSurfaceKHR(surfaceCreateInfo))
+
+		if (vkCreateWaylandSurfaceKHR(m_instance., &surfaceCreateInfo, nullptr, m_surface) != VK_SUCCESS)
+			throw std::runtime_error{"Failed to create VK surface"};*/
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
 		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
 	{
-		const auto devices{std::invoke([&instance] -> std::vector<vk::raii::PhysicalDevice>
-		{
-			auto physicalDevicesResult{instance.enumeratePhysicalDevices()};
-			if (physicalDevicesResult.result == vk::Result::eSuccess) [[likely]]
-				return std::move(physicalDevicesResult.value);
-
-			return {};
-		} )};
+		const auto devices{instance.enumeratePhysicalDevices()};
 
 		if (devices.empty()) return std::unexpected{"Failed to find GPUs"};
 
@@ -218,16 +204,18 @@ class HelloTriangleApplication
 		return iGpu;
 	}
 
-	static auto createLogicalDeviceInfo(const u32 graphicsIndex)
-		-> vk::DeviceCreateInfo
+	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
+		-> std::optional<vk::DeviceCreateInfo>
 	{
 		constexpr auto queuePriority{0.5f};
 
-		const vk::DeviceQueueCreateInfo devQueueCreateInfo{
+		vk::DeviceQueueCreateInfo devQueueCreateInfo{
 			.queueFamilyIndex = graphicsIndex,
 			.queueCount = 1,
 			.pQueuePriorities = &queuePriority
 		};
+
+		vk::PhysicalDeviceFeatures physDevFeatures;
 
 		const vk::StructureChain featureChain{
 			vk::PhysicalDeviceFeatures2{},
@@ -250,41 +238,28 @@ class HelloTriangleApplication
 		return devCreateInfo;
 	}
 
-
-	static auto createWindow(const i32 width, const i32 height, const std::string_view title) noexcept
-		-> std::expected<GLFWwindow *, std::string_view>
+	void initWindow(const i32 width, const i32 height)
 	{
-		if (not glfwInit()) return std::unexpected{"Failed to initialize GLFW"};
+		if (not glfwInit())
+			std::cerr << "Failed to initialize GLFW" << std::endl;
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		const auto window{
-			glfwCreateWindow(width, height, title.data(), nullptr, nullptr)
-		};
-
-		if (window == nullptr) return std::unexpected{"Failed to create GLFW window"};
-
-		return window;;
+		m_window = glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
+		if (not m_window)
+			std::cerr << "Failed to create GLFW window" << std::endl;
 	}
 
-
-	auto initVulkan() -> std::optional<std::string_view>
+	void initVulkan()
 	{
-		if (auto instanceExpected{createInstance()}; instanceExpected.has_value()) [[likely]]
-			m_instance = std::move(instanceExpected.value());
-		else [[unlikely]]
-			return instanceExpected.error();
+		createInstance();
+		setupDebugMessenger();
 
-		if (auto DebugMessengerOpt{createDebugMessenger()}; DebugMessengerOpt.has_value()) [[likely]]
-			m_debugMessenger = std::move(DebugMessengerOpt.value());
-		else [[unlikely]]
-			return "Failed to create Vulkan debug messenger";
-
-		if (auto pickedDevice{pickPhysicalDevice(m_instance)})
-			m_physicalDevice = std::move(pickedDevice.value());
+		if (const auto pickedDevice{pickPhysicalDevice(m_instance)})
+			m_physicalDevice = pickedDevice.value();
 		else
-			return pickedDevice.error();
+			throw std::runtime_error{pickedDevice.error().data()};
 
 		const u32 graphicsIndex{std::invoke([qfp = m_physicalDevice.getQueueFamilyProperties()]
 		{
@@ -302,23 +277,13 @@ class HelloTriangleApplication
 		})};
 
 
-		auto deviceResult{m_physicalDevice.createDevice(createLogicalDeviceInfo(graphicsIndex))};
-		if (deviceResult.result == vk::Result::eSuccess)
-			m_device = std::move(deviceResult.value);
+		if (const auto devCreateInfo{createLogicalDeviceInfo(m_physicalDevice, graphicsIndex)})
+			m_device = vk::raii::Device{m_physicalDevice, devCreateInfo.value()};
 		else
-		{
-			return "Failed to create logical device";
-		}
+			throw std::runtime_error{"Can't create logical device"};
 
-		
-		m_graphicsQueue = m_device.getQueue(graphicsIndex, 0);
-		/*
-		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
-			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
-		};
+		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
 
-		m_surface = m_instance.createWaylandSurfaceKHR(surfaceCreateInfo);*/
-		return std::nullopt;
 	}
 
 	void mainLoop()
@@ -339,15 +304,8 @@ public:
 
 	void run(const i32 width, const i32 height)
 	{
-		if (const auto windowExpected{createWindow(width, height, "Life During Wartime")}; windowExpected.has_value())
-			m_window = windowExpected.value();
-		else
-			std::cerr << windowExpected.error() << std::endl;
-		if (auto hasError{initVulkan()}; hasError)
-		{
-			std::cerr << hasError.value() << std::endl;
-			std::abort();
-		}
+		initWindow(width, height);
+		initVulkan();
 		mainLoop();
 		cleanup();
 	}
