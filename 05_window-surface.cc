@@ -1,8 +1,9 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include <vulkan/vulkan_raii.hpp>
+#define GLFW_EXPOSE_NATIVE_WAYLAND
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-#define GLFW_EXPOSE_NATIVE_WAYLAND
+
 #include <GLFW/glfw3native.h>
 
 #include <array>
@@ -35,9 +36,21 @@ constexpr bool isValidationLayersEnabled{ false };
 constexpr bool isValidationLayersEnabled{ true };
 #endif
 
+void errorCallback(const i32 error, const char *description)
+{
+	std::cout << "Error " << error << ": " << description << std::endl;
+}
 
 class HelloTriangleApplication
 {
+	template <typename T>
+	[[nodiscard]] static auto unwrap(const std::expected<T, std::string_view> &expected) -> T
+	{
+		if (expected.has_value()) return expected.value();
+
+		throw std::runtime_error{expected.error().data()};
+	}
+
 	[[nodiscard]] bool initValidationLayers() const
 	{
 		const auto availableLayersName{ std::invoke( [&]
@@ -110,7 +123,7 @@ class HelloTriangleApplication
 		const vk::DebugUtilsMessageTypeFlagsEXT type,
 		const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *)
 	{
-		std::cerr << "Validation layer: type" << to_string(type) << " mgs: " << pCallbackData->pMessage << std::endl;
+		std::cerr << "Validation layer: type" << vk::to_string(type) << " mgs: " << pCallbackData->pMessage << std::endl;
 
 		return vk::False;
 	}
@@ -167,29 +180,18 @@ class HelloTriangleApplication
 		};
 
 		m_instance = vk::raii::Instance{m_context, createInfo};
-
-		constexpr vk::WaylandSurfaceCreateInfoKHR surfaceCreateInfo {
-			.sType = vk::StructureType::eWaylandSurfaceCreateInfoKHR,
-		};
-
-		//Ебанная сишная хуйня я в рот ебал
-
-		/*if (m_instance.createWaylandSurfaceKHR(surfaceCreateInfo))
-
-		if (vkCreateWaylandSurfaceKHR(m_instance., &surfaceCreateInfo, nullptr, m_surface) != VK_SUCCESS)
-			throw std::runtime_error{"Failed to create VK surface"};*/
 	}
 
 	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
 		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
 	{
-		const auto devices{instance.enumeratePhysicalDevices()};
+		std::vector<vk::raii::PhysicalDevice> physDevices{instance.enumeratePhysicalDevices()};
 
-		if (devices.empty()) return std::unexpected{"Failed to find GPUs"};
+		if (physDevices.empty()) return std::unexpected{"Failed to find GPUs"};
 
 		vk::raii::PhysicalDevice iGpu{nullptr};
 
-		for (const auto &device : devices)
+		for (auto &device : physDevices)
 		{
 			const auto &deviceProps{ device.getProperties() };
 
@@ -198,15 +200,19 @@ class HelloTriangleApplication
 			using vk::PhysicalDeviceType::eDiscreteGpu;
 			if (deviceProps.deviceType == eDiscreteGpu) return device;
 
-			iGpu = device;
+			iGpu = std::move(device);
 		}
 
 		return iGpu;
 	}
 
-	auto createLogicalDeviceInfo(const vk::raii::PhysicalDevice &physDev, const u32 graphicsIndex)
-		-> std::optional<vk::DeviceCreateInfo>
+	auto createLogicalDevice(const u32 graphicsIndex) -> vk::raii::Device
 	{
+		const auto presentIndex{m_physicalDevice.getSurfaceSupportKHR(graphicsIndex, m_surface)
+			? graphicsIndex
+			: static_cast<u32>(m_physicalDevice.getQueueFamilyProperties().size())};
+
+
 		constexpr auto queuePriority{0.5f};
 
 		vk::DeviceQueueCreateInfo devQueueCreateInfo{
@@ -235,11 +241,45 @@ class HelloTriangleApplication
 			.ppEnabledExtensionNames = deviceExtensions.data(),
 		};
 
-		return devCreateInfo;
+		return vk::raii::Device{m_physicalDevice, devCreateInfo};
 	}
+
+	static auto findGraphicsIndex(const vk::raii::PhysicalDevice &physDev) -> u32
+	{
+		const std::vector<vk::QueueFamilyProperties> queueFamilyProperties{physDev.getQueueFamilyProperties()};
+
+		u32 graphicsIndex{static_cast<u32>(queueFamilyProperties.size())};
+
+		for (u32 i{0}; i < queueFamilyProperties.size(); ++i)
+		{
+			using vk::QueueFlagBits::eGraphics;
+			if ((queueFamilyProperties[i].queueFlags & eGraphics) == eGraphics)
+				graphicsIndex = i;
+		}
+
+		if (graphicsIndex == queueFamilyProperties.size())
+			throw std::runtime_error{"Can't find graphics index"};
+
+		return graphicsIndex;
+	}
+
+
+	static auto createSurface(const vk::raii::Instance &instance, GLFWwindow *window) -> vk::raii::SurfaceKHR
+	{
+		VkSurfaceKHR surface;
+		if (glfwCreateWindowSurface(*instance, window, nullptr, &surface) != VK_SUCCESS)
+		{
+			throw std::runtime_error{"Can't create surface"};
+		}
+
+		return {instance, surface};
+	}
+
 
 	void initWindow(const i32 width, const i32 height)
 	{
+		glfwSetErrorCallback(errorCallback);
+
 		if (not glfwInit())
 			std::cerr << "Failed to initialize GLFW" << std::endl;
 
@@ -255,34 +295,13 @@ class HelloTriangleApplication
 	{
 		createInstance();
 		setupDebugMessenger();
+		m_surface = createSurface(m_instance, m_window);
+		m_physicalDevice = unwrap(pickPhysicalDevice(m_instance));
 
-		if (const auto pickedDevice{pickPhysicalDevice(m_instance)})
-			m_physicalDevice = pickedDevice.value();
-		else
-			throw std::runtime_error{pickedDevice.error().data()};
+		const u32 graphicsIndex{findGraphicsIndex(m_physicalDevice)};
 
-		const u32 graphicsIndex{std::invoke([qfp = m_physicalDevice.getQueueFamilyProperties()]
-		{
-			u32 index{static_cast<u32>(qfp.size())};
-
-			for (u32 i{0}; i < qfp.size(); ++i)
-			{
-				using vk::QueueFlagBits::eGraphics;
-				if ((qfp[i].queueFlags & eGraphics) == eGraphics) index = i;
-			}
-
-			if (index == qfp.size()) throw std::runtime_error{"Cannot find a graphics in device queue"};
-
-			return index;
-		})};
-
-
-		if (const auto devCreateInfo{createLogicalDeviceInfo(m_physicalDevice, graphicsIndex)})
-			m_device = vk::raii::Device{m_physicalDevice, devCreateInfo.value()};
-		else
-			throw std::runtime_error{"Can't create logical device"};
-
-		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
+		m_device = createLogicalDevice(m_physicalDevice, graphicsIndex);
+		m_graphicsQueue = m_device.getQueue(graphicsIndex, 0);
 
 	}
 
@@ -318,12 +337,11 @@ private:
 	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
 
 	vk::raii::DebugUtilsMessengerEXT m_debugMessenger{nullptr};
-	vk::raii::SurfaceKHR surface{nullptr};
 
 	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
 	vk::raii::Device m_device{nullptr};
-
 	vk::raii::Queue m_graphicsQueue{nullptr};
+
 	vk::raii::SurfaceKHR m_surface{nullptr};
 };
 
