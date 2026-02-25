@@ -206,12 +206,42 @@ class HelloTriangleApplication
 		return iGpu;
 	}
 
-	auto createLogicalDevice(const u32 graphicsIndex) -> vk::raii::Device
+	[[nodiscard]] auto createLogicalDevice(u32 graphicsIndex) const -> vk::raii::Device
 	{
-		const auto presentIndex{m_physicalDevice.getSurfaceSupportKHR(graphicsIndex, m_surface)
-			? graphicsIndex
-			: static_cast<u32>(m_physicalDevice.getQueueFamilyProperties().size())};
+		const std::vector<vk::QueueFamilyProperties> &queueFamilyProperties{m_physicalDevice.getQueueFamilyProperties()};
 
+		u32 presentIndex{m_physicalDevice.getSurfaceSupportKHR(graphicsIndex, m_surface)
+			? graphicsIndex
+			: static_cast<u32>(queueFamilyProperties.size())
+		};
+
+		if (presentIndex == queueFamilyProperties.size())
+		{
+			for (size_t i{}; i < queueFamilyProperties.size(); ++i)
+			{
+				using vk::QueueFlagBits::eGraphics;
+				const u32 surfaceSupport{m_physicalDevice.getSurfaceSupportKHR(static_cast<u32>(i), *m_surface)};
+
+				if ((queueFamilyProperties[i].queueFlags & eGraphics) and surfaceSupport)
+				{
+					graphicsIndex = presentIndex = i;
+					break;
+				}
+			}
+			if (presentIndex == queueFamilyProperties.size())
+			{
+				for (size_t i{}; i < queueFamilyProperties.size(); ++i)
+				{
+					if (m_physicalDevice.getSurfaceSupportKHR(presentIndex, *m_surface))
+					{
+						presentIndex = i;
+						break;
+					}
+				}
+			}
+		}
+		if ((graphicsIndex == queueFamilyProperties.size()) or (graphicsIndex == queueFamilyProperties.size()))
+			throw std::runtime_error{"Could not find a queue for graphics or present"};
 
 		constexpr auto queuePriority{0.5f};
 
