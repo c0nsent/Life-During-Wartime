@@ -1,9 +1,8 @@
-#define VK_USE_PLATFORM_WAYLAND_KHR
 #include <vulkan/vulkan_raii.hpp>
+
 #define GLFW_EXPOSE_NATIVE_WAYLAND
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-
 #include <GLFW/glfw3native.h>
 
 #include <array>
@@ -11,24 +10,19 @@
 #include <expected>
 #include <functional>
 #include <iostream>
-#include <optional>
-#include <print>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
+#include <stdfloat>
 
 
 using i32 = std::int32_t;
 using u32 = std::uint32_t;
+using f32 = std::float_t;
 
 constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
-
-
-constexpr auto validationLayers{
-	std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
-};
 
 #ifdef NDEBUG
 constexpr bool isValidationLayersEnabled{ false };
@@ -36,6 +30,7 @@ constexpr bool isValidationLayersEnabled{ false };
 constexpr bool isValidationLayersEnabled{ true };
 #endif
 
+//Сишная залупа
 void errorCallback(const i32 error, const char *description)
 {
 	std::cout << "Error " << error << ": " << description << std::endl;
@@ -44,30 +39,54 @@ void errorCallback(const i32 error, const char *description)
 
 class HelloTriangleApplication
 {
-	template <typename T>
-	[[nodiscard]] static auto unwrap(const std::expected<T, std::string_view> &expected) -> T
+	struct queueIndexes
 	{
-		if (expected.has_value()) return expected.value();
+		u32 graphics;
+		u32 presentation;
+	};
 
-		throw std::runtime_error{expected.error().data()};
+	template <typename T>
+	[[nodiscard]] static auto unwrap(std::expected<T, const char *> &&expected) -> T
+	{
+		if (expected.has_value()) return std::move(expected.value());
+
+		throw std::runtime_error{expected.error()};
 	}
+
+	template<class VecType, typename MemberType>
+	[[nodiscard]] static auto toUnorderedSet(const std::vector<VecType> &vec, std::function<MemberType(VecType)> pred)
+		-> std::unordered_set<std::string_view>
+	{
+		std::unordered_set<std::string_view> set;
+		set.reserve(vec.size());
+
+		for (const VecType &element : vec)
+			set.insert(pred(element));
+
+		return set;
+	}
+
 
 	[[nodiscard]] bool initValidationLayers() const
 	{
-		const auto availableLayersName{ std::invoke( [&]
-			{
-				const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
+		/*const auto availableLayersName{ std::invoke( [&]
+		{
+			const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
 
-				std::unordered_set<std::string_view> result;
-				result.reserve(availableLayerProps.size());
+			std::unordered_set<std::string_view> result;
+			result.reserve(availableLayerProps.size());
 
-				for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
+			for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
 
-				return result;
-			}
-		)};
+			return result;
+		} )};*/
 
-		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(validationLayers,
+		const auto availableLayersName{toUnorderedSet(
+			m_context.enumerateInstanceLayerProperties(), [] (const vk::LayerProperties &props) {return props.layerName;})
+
+		};
+
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(REQUIRED_VALIDATION_LAYERS,
 			[&](const std::string_view validationLayer)
 			{
 				return availableLayersName.contains(validationLayer);
@@ -116,6 +135,7 @@ class HelloTriangleApplication
 		});
 	}
 
+
 	static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
 		const vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
 		const vk::DebugUtilsMessageTypeFlagsEXT type,
@@ -143,7 +163,7 @@ class HelloTriangleApplication
 		return m_instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 	}
 
-	[[nodiscard]] auto createInstance() const -> vk::raii::Instance
+	[[nodiscard]] auto createInstance() const -> std::expected<vk::raii::Instance, const char *>
 	{
 		constexpr vk::ApplicationInfo appInfo{
 			.pApplicationName = "Hello Triangle",
@@ -156,52 +176,52 @@ class HelloTriangleApplication
 		if constexpr(isValidationLayersEnabled)
 		{
 			if (not initValidationLayers())
-				throw std::runtime_error{"Failed to initialize validation layers"};
+				return std::unexpected{"Failed to initialize validation layers"};
 		}
 
-		const auto requiredExtensions{ getRequiredExtensions() };
-
+		const std::vector<const char*> requiredExtensions{getRequiredExtensions()};
 		if (not isRequiredExtensionSupported(requiredExtensions))
-			throw std::runtime_error{"Error: Required extension does not supported"};
+			return std::unexpected{"Error: Required extension does not supported"};
 
 		const vk::InstanceCreateInfo createInfo {
 			.pApplicationInfo = &appInfo,
-			.enabledLayerCount = validationLayers.size(),
-			.ppEnabledLayerNames = validationLayers.data(),
-			.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size()),
+			.enabledLayerCount = REQUIRED_VALIDATION_LAYERS.size(),
+			.ppEnabledLayerNames = REQUIRED_VALIDATION_LAYERS.data(),
+			.enabledExtensionCount = static_cast<u32>(requiredExtensions.size()),
 			.ppEnabledExtensionNames = requiredExtensions.data(),
 		};
 
 		return m_context.createInstance(createInfo);
 	}
 
-	static auto pickPhysicalDevice(const vk::raii::Instance &instance)
-		-> std::expected<vk::raii::PhysicalDevice, std::string_view>
+	[[nodiscard]] auto pickPhysicalDevice() const -> std::expected<vk::raii::PhysicalDevice, const char *>
 	{
-		std::vector<vk::raii::PhysicalDevice> physDevices{instance.enumeratePhysicalDevices()};
+		using expect = std::expected<vk::raii::PhysicalDevice, const char *>;
+		using error = std::unexpected<const char *>;
 
-		if (physDevices.empty()) return std::unexpected{"Failed to find GPUs"};
+		std::vector<vk::raii::PhysicalDevice> physDevices{m_instance.enumeratePhysicalDevices()};
 
-		vk::raii::PhysicalDevice iGpu{nullptr};
+		if (physDevices.empty()) return error{"Failed to find GPUs"};
+
+		std::optional<vk::raii::PhysicalDevice> iGpu;
 
 		for (auto &device : physDevices)
 		{
-			const auto &deviceProps{ device.getProperties() };
+			const auto deviceProps{device.getProperties()};
 
-			if (not (device.getFeatures().geometryShader and deviceProps.apiVersion >= VK_API_VERSION_1_3) ) continue;
+			if (not (device.getFeatures().geometryShader and deviceProps.apiVersion >= vk::ApiVersion14) ) continue;
 
-			using vk::PhysicalDeviceType::eDiscreteGpu;
-			if (deviceProps.deviceType == eDiscreteGpu) return device;
+			if (deviceProps.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) return device;
 
 			iGpu = std::move(device);
 		}
 
-		return iGpu;
+		return iGpu ? expect{std::move(iGpu.value())} : error{"Failed to find a suitable GPU"};
 	}
 
 	[[nodiscard]] auto createLogicalDevice(u32 graphicsIndex) -> vk::raii::Device
 	{
-		const std::vector<vk::QueueFamilyProperties> &queueFamilyProperties{m_physicalDevice.getQueueFamilyProperties()};
+		const std::vector<vk::QueueFamilyProperties> queueFamilyProperties{m_physicalDevice.getQueueFamilyProperties()};
 
 		u32 presentIndex{m_physicalDevice.getSurfaceSupportKHR(graphicsIndex, m_surface)
 			? graphicsIndex
@@ -215,7 +235,7 @@ class HelloTriangleApplication
 				using vk::QueueFlagBits::eGraphics;
 				const u32 surfaceSupport{m_physicalDevice.getSurfaceSupportKHR(static_cast<u32>(i), *m_surface)};
 
-				if ((queueFamilyProperties[i].queueFlags & eGraphics) and surfaceSupport)
+				if ((queueFamilyProperties[i].queueFlags & eGraphics) == eGraphics and surfaceSupport)
 				{
 					graphicsIndex = presentIndex = i;
 					break;
@@ -233,18 +253,11 @@ class HelloTriangleApplication
 				}
 			}
 		}
-		if ((graphicsIndex == queueFamilyProperties.size()) or (presentIndex == queueFamilyProperties.size()))
+		if (graphicsIndex == queueFamilyProperties.size() or presentIndex == queueFamilyProperties.size())
 			throw std::runtime_error{"Could not find a queue for graphics or present"};
 
-		/*auto features{m_physicalDevice.getFeatures2()};
-		vk::PhysicalDeviceVulkan13Features vulkan13Features{};
-		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicStateFeatures{};
-		vulkan13Features.dynamicRendering = vk::True;
-		extendedDynamicStateFeatures.extendedDynamicState = vk::True;
-		vulkan13Features.pNext = &extendedDynamicStateFeatures;
-		features.pNext = &vulkan13Features;*/
 
-		constexpr auto queuePriority{0.5f};
+		constexpr f32 queuePriority{0.5f};
 
 		vk::DeviceQueueCreateInfo devQueueCreateInfo{
 			.queueFamilyIndex = graphicsIndex,
@@ -270,64 +283,73 @@ class HelloTriangleApplication
 			.ppEnabledExtensionNames = deviceExtensions.data(),
 		};
 
-		m_device = vk::raii::Device{m_physicalDevice, devCreateInfo};
-		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
-		m_presentQueue = vk::raii::Queue{m_device, presentIndex, 0};
+		m_device = m_physicalDevice.createDevice(devCreateInfo);
+		m_graphicsQueue = m_device.getQueue(graphicsIndex, 0);
+		m_presentQueue = m_device.getQueue(presentIndex, 0);
+
+		return std::move(m_device);
 	}
 
-	static auto findGraphicsIndex(const vk::raii::PhysicalDevice &physDev) -> u32
+	[[nodiscard]] static auto findIndexes(const std::vector<vk::QueueFamilyProperties> &qfp)
+		-> std::expected<queueIndexes, const char *>
 	{
-		const std::vector<vk::QueueFamilyProperties> queueFamilyProperties{physDev.getQueueFamilyProperties()};
+		const u32 qfpSize{static_cast<u32>(qfp.size())};
+		queueIndexes indexes{qfpSize, qfpSize};
 
-		u32 graphicsIndex{static_cast<u32>(queueFamilyProperties.size())};
-
-		for (u32 i{0}; i < queueFamilyProperties.size(); ++i)
+		for ( u32 i{0}; i != qfpSize; ++i )
 		{
-			using vk::QueueFlagBits::eGraphics;
-			if ((queueFamilyProperties[i].queueFlags & eGraphics) == eGraphics)
-				graphicsIndex = i;
+			if ((qfp[i].queueFlags & vk::QueueFlagBits::eGraphics) == vk::QueueFlagBits::eGraphics)
+			{
+				indexes.graphics = i;
+				break;
+			}
 		}
 
-		if (graphicsIndex == queueFamilyProperties.size())
-			throw std::runtime_error{"Can't find graphics index"};
-
-		return graphicsIndex;
+		if (indexes.graphics >= qfpSize) return std::unexpected{"Cannot find graphics queue index"};
 	}
 
 
-	[[nodiscard]] auto createSurface() const -> vk::raii::SurfaceKHR
+
+
+	[[nodiscard]] auto createSurface() const -> std::expected<vk::raii::SurfaceKHR, const char *>
 	{
+		using expect = std::expected<vk::raii::SurfaceKHR, const char *>;
+		using error = std::unexpected<const char *>;
+
 		VkSurfaceKHR surface;
-		if (glfwCreateWindowSurface(*m_instance, m_window, nullptr, &surface) != VK_SUCCESS)
-		{
-			throw std::runtime_error{"Can't create surface"};
-		}
+		const vk::Result result{glfwCreateWindowSurface(*m_instance, m_window, nullptr, &surface)};
 
-		return {m_instance, surface};
+		return result == vk::Result::eSuccess ? expect{{m_instance, surface}} : error{"Can't create surface"};
 	}
 
 
-	auto createWindow(const i32 width, const i32 height) -> GLFWwindow *
+	[[nodiscard]] static auto createWindow(const i32 width, const i32 height, const char *title) noexcept
+		-> std::expected<GLFWwindow *, const char *>
 	{
+		using expect = std::expected<GLFWwindow *, const char *>;
+		using error = std::unexpected<const char *>;
+
 		glfwSetErrorCallback(errorCallback);
 
-		if (glfwInit() != GLFW_TRUE)
-			std::cerr << "Failed to initialize GLFW" << std::endl;
+		if (not glfwInit())
+			return error{"Can't initialize GLFW"};
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		return glfwCreateWindow(width, height, "Hello Triangle", nullptr, nullptr);
+		GLFWwindow *window{glfwCreateWindow(width, height, title, nullptr, nullptr)};
+		return window != nullptr ? expect{window} : error{"Failed to create GLFW window"};
 	}
+
 
 	void initVulkan()
 	{
-		m_instance = createInstance();
+		m_instance = unwrap(createInstance());
 		m_debugMessenger = setupDebugMessenger();
-		m_surface = createSurface();
-		m_physicalDevice = unwrap(pickPhysicalDevice(m_instance));
+		m_surface = unwrap(createSurface());
+		m_physicalDevice = unwrap(pickPhysicalDevice());
 
-		const u32 graphicsIndex{findGraphicsIndex(m_physicalDevice)};
+		const u32 graphicsIndex{unwrap(findGraphicsIndex())};
 
 		m_device = createLogicalDevice(graphicsIndex);
 	}
@@ -348,9 +370,9 @@ class HelloTriangleApplication
 
 public:
 
-	void run(const i32 width, const i32 height)
+	void run(const i32 width, const i32 height, const char *title)
 	{
-		m_window = createWindow(width, height);
+		m_window = unwrap(createWindow(width, height, title));
 		initVulkan();
 		mainLoop();
 		cleanup();
@@ -358,7 +380,7 @@ public:
 
 private:
 
-	GLFWwindow *m_window;
+	GLFWwindow *m_window{nullptr};
 
 	vk::raii::Context m_context;
 	vk::raii::Instance m_instance{nullptr}; //Дефолтный конструктор удален
@@ -371,16 +393,22 @@ private:
 	vk::raii::Queue m_presentQueue{nullptr};
 
 	vk::raii::SurfaceKHR m_surface{nullptr};
+
+	static constexpr auto REQUIRED_VALIDATION_LAYERS{
+		std::to_array<const char *>({"VK_LAYER_KHRONOS_validation"})
+	};
 };
 
 int main()
 {
 	try
 	{
+		const vk::QueueFlags ff{vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eProtected};
+		std::cout << ((ff ) == vk::QueueFlagBits::eGraphics) << std::endl ;
 		HelloTriangleApplication app;
-		app.run(WIDTH, HEIGHT);
+		app.run(WIDTH, HEIGHT, "BLYAD");
 	}
-	catch (const std::runtime_error& e)
+	catch (const std::runtime_error &e)
 	{
 		std::cerr << e.what() << std::endl;
 		return 1;
