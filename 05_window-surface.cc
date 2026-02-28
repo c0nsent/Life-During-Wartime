@@ -39,10 +39,12 @@ void errorCallback(const i32 error, const char *description)
 
 class HelloTriangleApplication
 {
-	struct queueIndexes
+	struct QueueIndexes
 	{
-		u32 graphics;
-		u32 presentation;
+		u32 graphics{};
+		u32 presentation{};
+
+		explicit constexpr QueueIndexes(const u32 value) : graphics{value}, presentation{value} {}
 	};
 
 	template <typename T>
@@ -54,14 +56,14 @@ class HelloTriangleApplication
 	}
 
 	template<class VecType, class Func>
-	[[nodiscard]] static auto toUnorderedSet(const std::vector<VecType> &vec,  Func &&pred)
-		-> std::unordered_set<std::string_view>
+	[[nodiscard]] static auto toUnorderedSet(std::vector<VecType> &&vec,  Func &&pred)
+		-> std::unordered_set<std::string>
 	{
-		std::unordered_set<std::string_view> set;
+		std::unordered_set<std::string> set;
 		set.reserve(vec.size());
 
-		for (const auto &element : vec)
-			set.insert(pred(element));
+		for (auto &element : vec)
+			set.emplace(pred(std::move(element)));
 
 		return set;
 	}
@@ -69,12 +71,12 @@ class HelloTriangleApplication
 
 	[[nodiscard]] bool initValidationLayers() const
 	{
-		const std::vector<vk::LayerProperties> properties{m_context.enumerateInstanceLayerProperties()};
+		std::vector properties{m_context.enumerateInstanceLayerProperties()};
 
 		const auto availableLayersName{toUnorderedSet(
-			properties, [](const auto &layerProps)
+			std::move(properties), [](vk::LayerProperties &&layerProps)
 			{
-				return layerProps.layerName;
+				return layerProps.layerName.data();
 			})
 		};
 
@@ -104,22 +106,18 @@ class HelloTriangleApplication
 
 	[[nodiscard]] auto isRequiredExtensionSupported(const std::vector<const char *> &requiredExtensions) const -> bool
 	{
-		const auto availableExtensions{ std::invoke([&]
+		std::vector properties{m_context.enumerateInstanceExtensionProperties()};
+
+		const auto availableExtensionNames{toUnorderedSet(std::move(properties),
+			[] (vk::ExtensionProperties &&property)
+			{
+			return property.extensionName.data();
+			}
+		)};
+
+		return std::ranges::all_of(requiredExtensions, [availableExtensionNames](const auto requiredExtension)
 		{
-			const auto extensionPropertiesVec{ m_context.enumerateInstanceExtensionProperties() };
-
-			std::unordered_set<std::string_view> result;
-			result.reserve(requiredExtensions.size());
-
-			for (const auto &[extensionName, specVersion] : extensionPropertiesVec)
-				result.insert(extensionName);
-
-			return result;
-		})};
-
-		return std::ranges::all_of(requiredExtensions, [&](const auto requiredExtension)
-		{
-			if (availableExtensions.contains(requiredExtension)) return true;
+			if (availableExtensionNames.contains(requiredExtension)) return true;
 
 			std::cerr << "Extension " << requiredExtension << "is not supported\n";
 
@@ -283,10 +281,10 @@ class HelloTriangleApplication
 	}
 
 	[[nodiscard]] static auto findIndexes(const std::vector<vk::QueueFamilyProperties> &qfp)
-		-> std::expected<queueIndexes, const char *>
+		-> std::expected<QueueIndexes, const char *>
 	{
 		const u32 qfpSize{static_cast<u32>(qfp.size())};
-		queueIndexes indexes{qfpSize, qfpSize};
+		QueueIndexes indexes{qfpSize};
 
 		for ( u32 i{0}; i != qfpSize; ++i )
 		{
@@ -343,7 +341,11 @@ class HelloTriangleApplication
 
 		//const u32 graphicsIndex{unwrap(findGraphicsIndex())};
 
-		//m_device = createLogicalDevice(graphicsIndex);
+		const QueueIndexes indexes{unwrap(findIndexes(m_physicalDevice.getQueueFamilyProperties()))};
+
+		m_device = createLogicalDevice();
+		m_graphicsQueue = m_device.getQueue(indexes.graphics, 0);
+		m_presentQueue = m_device.getQueue(indexes.presentation, 0);
 	}
 
 	void mainLoop() const
