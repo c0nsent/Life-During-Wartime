@@ -53,14 +53,14 @@ class HelloTriangleApplication
 		throw std::runtime_error{expected.error()};
 	}
 
-	template<class VecType, typename MemberType>
-	[[nodiscard]] static auto toUnorderedSet(const std::vector<VecType> &vec, std::function<MemberType(VecType)> pred)
+	template<class VecType, class Func>
+	[[nodiscard]] static auto toUnorderedSet(const std::vector<VecType> &vec,  Func &&pred)
 		-> std::unordered_set<std::string_view>
 	{
 		std::unordered_set<std::string_view> set;
 		set.reserve(vec.size());
 
-		for (const VecType &element : vec)
+		for (const auto &element : vec)
 			set.insert(pred(element));
 
 		return set;
@@ -69,25 +69,17 @@ class HelloTriangleApplication
 
 	[[nodiscard]] bool initValidationLayers() const
 	{
-		/*const auto availableLayersName{ std::invoke( [&]
-		{
-			const auto availableLayerProps{ m_context.enumerateInstanceLayerProperties() };
-
-			std::unordered_set<std::string_view> result;
-			result.reserve(availableLayerProps.size());
-
-			for (const auto &layerProp : availableLayerProps) result.insert(layerProp.layerName);
-
-			return result;
-		} )};*/
+		const std::vector<vk::LayerProperties> properties{m_context.enumerateInstanceLayerProperties()};
 
 		const auto availableLayersName{toUnorderedSet(
-			m_context.enumerateInstanceLayerProperties(), [] (const vk::LayerProperties &props) {return props.layerName;})
-
+			properties, [](const auto &layerProps)
+			{
+				return layerProps.layerName;
+			})
 		};
 
-		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(REQUIRED_VALIDATION_LAYERS,
-			[&](const std::string_view validationLayer)
+		const bool isAllRequiredLayersAvailable{ std::ranges::all_of(
+			REQUIRED_VALIDATION_LAYERS, [&](const char *validationLayer)
 			{
 				return availableLayersName.contains(validationLayer);
 			}
@@ -349,9 +341,9 @@ class HelloTriangleApplication
 		m_surface = unwrap(createSurface());
 		m_physicalDevice = unwrap(pickPhysicalDevice());
 
-		const u32 graphicsIndex{unwrap(findGraphicsIndex())};
+		//const u32 graphicsIndex{unwrap(findGraphicsIndex())};
 
-		m_device = createLogicalDevice(graphicsIndex);
+		//m_device = createLogicalDevice(graphicsIndex);
 	}
 
 	void mainLoop() const
