@@ -55,6 +55,7 @@ class HelloTriangleApplication
 		throw std::runtime_error{expected.error()};
 	}
 
+
 	template<class VecType, class Func>
 	[[nodiscard]] static auto toUnorderedSet(std::vector<VecType> &&vec,  Func &&pred)
 		-> std::unordered_set<std::string>
@@ -189,68 +190,28 @@ class HelloTriangleApplication
 		using expect = std::expected<vk::raii::PhysicalDevice, const char *>;
 		using error = std::unexpected<const char *>;
 
-		std::vector<vk::raii::PhysicalDevice> physDevices{m_instance.enumeratePhysicalDevices()};
+		std::vector physicalDevices{m_instance.enumeratePhysicalDevices()};
 
-		if (physDevices.empty()) return error{"Failed to find GPUs"};
+		if (physicalDevices.empty()) return error{"Failed to find GPUs"};
 
-		std::optional<vk::raii::PhysicalDevice> iGpu;
-
-		for (auto &device : physDevices)
+		for (auto &device : physicalDevices)
 		{
-			const auto deviceProps{device.getProperties()};
+			const auto properties{device.getProperties()};
+			if ( properties.deviceType != vk::PhysicalDeviceType::eDiscreteGpu) continue;
 
-			if (not (device.getFeatures().geometryShader and deviceProps.apiVersion >= vk::ApiVersion14) ) continue;
-
-			if (deviceProps.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) return device;
-
-			iGpu = std::move(device);
+			if (device.getFeatures().geometryShader and properties.apiVersion >= vk::ApiVersion14)
+				return std::move(device);
 		}
 
-		return iGpu ? expect{std::move(iGpu.value())} : error{"Failed to find a suitable GPU"};
+		return error{"Failed to find a discrete GPU"};
 	}
 
-	[[nodiscard]] auto createLogicalDevice(u32 graphicsIndex) -> vk::raii::Device
+	[[nodiscard]] auto createLogicalDevice(const u32 queueIndex) const -> vk::raii::Device
 	{
-		const std::vector<vk::QueueFamilyProperties> queueFamilyProperties{m_physicalDevice.getQueueFamilyProperties()};
-
-		u32 presentIndex{m_physicalDevice.getSurfaceSupportKHR(graphicsIndex, m_surface)
-			? graphicsIndex
-			: static_cast<u32>(queueFamilyProperties.size())
-		};
-
-		if (presentIndex == queueFamilyProperties.size())
-		{
-			for (size_t i{}; i < queueFamilyProperties.size(); ++i)
-			{
-				using vk::QueueFlagBits::eGraphics;
-				const u32 surfaceSupport{m_physicalDevice.getSurfaceSupportKHR(static_cast<u32>(i), *m_surface)};
-
-				if ((queueFamilyProperties[i].queueFlags & eGraphics) == eGraphics and surfaceSupport)
-				{
-					graphicsIndex = presentIndex = i;
-					break;
-				}
-			}
-			if (presentIndex == queueFamilyProperties.size())
-			{
-				for (size_t i{}; i < queueFamilyProperties.size(); ++i)
-				{
-					if (m_physicalDevice.getSurfaceSupportKHR(presentIndex, *m_surface))
-					{
-						presentIndex = i;
-						break;
-					}
-				}
-			}
-		}
-		if (graphicsIndex == queueFamilyProperties.size() or presentIndex == queueFamilyProperties.size())
-			throw std::runtime_error{"Could not find a queue for graphics or present"};
-
-
 		constexpr f32 queuePriority{0.5f};
 
 		vk::DeviceQueueCreateInfo devQueueCreateInfo{
-			.queueFamilyIndex = graphicsIndex,
+			.queueFamilyIndex = queueIndex,
 			.queueCount = 1,
 			.pQueuePriorities = &queuePriority
 		};
@@ -273,32 +234,25 @@ class HelloTriangleApplication
 			.ppEnabledExtensionNames = deviceExtensions.data(),
 		};
 
-		m_device = m_physicalDevice.createDevice(devCreateInfo);
-		m_graphicsQueue = m_device.getQueue(graphicsIndex, 0);
-		m_presentQueue = m_device.getQueue(presentIndex, 0);
-
-		return std::move(m_device);
+		return m_physicalDevice.createDevice(devCreateInfo);
 	}
 
-	[[nodiscard]] static auto findIndexes(const std::vector<vk::QueueFamilyProperties> &qfp)
-		-> std::expected<QueueIndexes, const char *>
+	[[nodiscard]] auto findQueueIndex() const -> std::expected<u32, const char *>
 	{
-		const u32 qfpSize{static_cast<u32>(qfp.size())};
-		QueueIndexes indexes{qfpSize};
+		const std::vector properties{m_physicalDevice.getQueueFamilyProperties()};
 
-		for ( u32 i{0}; i != qfpSize; ++i )
+		for (u32 i{0}; i != static_cast<u32>(properties.size()); ++i)
 		{
-			if ((qfp[i].queueFlags & vk::QueueFlagBits::eGraphics) == vk::QueueFlagBits::eGraphics)
-			{
-				indexes.graphics = i;
-				break;
-			}
+			using vk::QueueFlagBits::eGraphics;
+			const bool isGraphics{(properties[i].queueFlags & eGraphics) == eGraphics};
+			const bool hasSurfaceSupport{m_physicalDevice.getSurfaceSupportKHR(i, m_surface) == vk::Bool32{true}};
+
+			if (isGraphics and hasSurfaceSupport)
+				return i;
 		}
 
-		if (indexes.graphics >= qfpSize) return std::unexpected{"Cannot find graphics queue index"};
+		return std::unexpected{"Cannot find a suitable queue index"};
 	}
-
-
 
 
 	[[nodiscard]] auto createSurface() const -> std::expected<vk::raii::SurfaceKHR, const char *>
@@ -338,14 +292,9 @@ class HelloTriangleApplication
 		m_debugMessenger = setupDebugMessenger();
 		m_surface = unwrap(createSurface());
 		m_physicalDevice = unwrap(pickPhysicalDevice());
-
-		//const u32 graphicsIndex{unwrap(findGraphicsIndex())};
-
-		const QueueIndexes indexes{unwrap(findIndexes(m_physicalDevice.getQueueFamilyProperties()))};
-
-		m_device = createLogicalDevice();
-		m_graphicsQueue = m_device.getQueue(indexes.graphics, 0);
-		m_presentQueue = m_device.getQueue(indexes.presentation, 0);
+		const u32 queueIndex{unwrap(findQueueIndex())};
+		m_device = createLogicalDevice(queueIndex);
+		m_deviceQueue = m_device.getQueue(queueIndex, 0);
 	}
 
 	void mainLoop() const
@@ -383,8 +332,7 @@ private:
 
 	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
 	vk::raii::Device m_device{nullptr};
-	vk::raii::Queue m_graphicsQueue{nullptr};
-	vk::raii::Queue m_presentQueue{nullptr};
+	vk::raii::Queue m_deviceQueue{nullptr};
 
 	vk::raii::SurfaceKHR m_surface{nullptr};
 
@@ -397,8 +345,6 @@ int main()
 {
 	try
 	{
-		const vk::QueueFlags ff{vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eProtected};
-		std::cout << ((ff ) == vk::QueueFlagBits::eGraphics) << std::endl ;
 		HelloTriangleApplication app;
 		app.run(WIDTH, HEIGHT, "BLYAD");
 	}
