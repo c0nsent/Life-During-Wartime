@@ -1,11 +1,13 @@
 cmake_minimum_required (VERSION 4.2)
 
-project (VulkanTutorial)
+project (LifeDuringWartime)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
 
 # Add option to enable/disable C++ 20 module
 option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan" OFF)
+
+set(${ENABLE_CPP20_MODULE} OFF)
 
 # Enable C++ module dependency scanning only if C++ 20 module is enabled
 if(ENABLE_CPP20_MODULE)
@@ -13,12 +15,14 @@ if(ENABLE_CPP20_MODULE)
 	message("Module support enabled")
 endif()
 
-find_package (glfw3 REQUIRED)
-find_package (glm REQUIRED)
-find_package (Vulkan 1.4.335 REQUIRED)      # Require Vulkan SDK version 1.4.335 or higher
-find_package (tinyobjloader REQUIRED)
-find_package (tinygltf REQUIRED)
-find_package (KTX REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
+find_package(Vulkan 1.4.335 REQUIRED)
+find_package(tinyobjloader REQUIRED)
+find_package(tinygltf REQUIRED)
+find_package(KTX REQUIRED)
+find_package(stb REQUIRED)
+set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 # set up Vulkan C++ module only if enabled
 if(ENABLE_CPP20_MODULE)
@@ -37,7 +41,7 @@ if(ENABLE_CPP20_MODULE)
 			Vulkan::Vulkan
 	)
 
-	set_target_properties(VulkanCppModule PROPERTIES CXX_STANDARD 20)
+	target_compile_features(VulkanCppModule PUBLIC cxx_std_23)
 
 	target_sources(VulkanCppModule
 			PUBLIC
@@ -63,9 +67,6 @@ else()
 			INTERFACE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 	)
 endif()
-
-find_package(stb REQUIRED)
-set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 add_executable (glslang::validator IMPORTED)
 find_program (GLSLANG_VALIDATOR "glslangValidator" HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
@@ -119,8 +120,8 @@ function (add_chapter CHAPTER_NAME)
 	add_executable (${CHAPTER_NAME} ${CHAPTER_NAME}.cc)
 	set_target_properties (${CHAPTER_NAME} PROPERTIES
 			RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CHAPTER_NAME})
-	set_target_properties (${CHAPTER_NAME} PROPERTIES CXX_STANDARD 23)
-	target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw)
+	target_compile_features(${CHAPTER_NAME} PUBLIC cxx_std_23)
+	target_link_libraries (${CHAPTER_NAME} Vulkan::cppm glfw3)
 	target_include_directories (${CHAPTER_NAME} PRIVATE ${STB_INCLUDEDIR})
 
 	# Add compile definition if C++ 20 module is enabled
@@ -157,9 +158,4 @@ function (add_chapter CHAPTER_NAME)
 	endif ()
 endfunction ()
 
-add_chapter(00_base-code)
-add_chapter(01_instance)
-add_chapter(02_validation-layers)
-add_chapter(03_physical-devices-and-queue-families)
-add_chapter(04_logical-device-and-queue)
 add_chapter(05_window-surface)
