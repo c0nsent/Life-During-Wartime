@@ -159,3 +159,4 @@ function (add_chapter CHAPTER_NAME)
 endfunction ()
 
 add_chapter(05_window-surface)
+add_chapter(06_swapchain)
