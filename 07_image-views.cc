@@ -1,17 +1,15 @@
+#include <array>
+#include <cstdint>
+#include <expected>
+#include <iostream>
+#include <ranges>
+#include <stdexcept>
+#include <unordered_set>
+
 #include <vulkan/vulkan_raii.hpp>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-
-#include <array>
-#include <cstdint>
-#include <expected>
-#include <functional>
-#include <iostream>
-#include <ranges>
-#include <sstream>
-#include <stdexcept>
-#include <unordered_set>
 
 
 using i32 = std::int32_t;
@@ -151,9 +149,9 @@ class LifeDuringWartime
 
 		const vk::ApplicationInfo appInfo{
 			.pApplicationName = m_applicationName.data(),
-			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+			.applicationVersion = vk::makeVersion(1, 0, 0),
 			.pEngineName = m_applicationName.data(),
-			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
+			.engineVersion = vk::makeVersion(1, 0, 0),
 			.apiVersion = vk::ApiVersion14
 		};
 
@@ -331,6 +329,41 @@ class LifeDuringWartime
 		};
 	}
 
+	[[nodiscard]] auto createImageViews() -> std::vector<vk::raii::ImageView>
+	{
+		std::vector<vk::raii::ImageView> imageViews;
+		imageViews.reserve(m_swapChainImages.size());
+
+		m_swapChainImageViews.clear();
+
+		constexpr vk::ImageSubresourceRange subresourceRange{
+			.aspectMask = vk::ImageAspectFlagBits::eColor,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1
+		};
+
+		vk::ImageViewCreateInfo createInfo{
+			.viewType = vk::ImageViewType::e2D,
+			.format = m_swapChainFormat.format,
+			.subresourceRange = subresourceRange,
+		};
+
+		for (const auto &image : m_swapChainImages)
+		{
+			createInfo.image = image;
+			imageViews.emplace_back(m_device.createImageView(createInfo));
+		}
+
+		return imageViews;
+	}
+
+
+	void createGraphicsPipeline()
+	{
+
+	}
 
 
 	[[nodiscard]] auto createWindow(const i32 width, const i32 height) const noexcept
@@ -379,7 +412,12 @@ class LifeDuringWartime
 		m_swapChain =  unwrap(createSwapChain());
 		m_swapChainImages = m_swapChain.getImages();
 
+		m_swapChainImageViews = createImageViews();
+
+		createGraphicsPipeline();
+
 		std::cout << "Vulkan initialized successfully" << std::endl;
+
 	}
 
 	void mainLoop() const
@@ -427,6 +465,8 @@ private:
 	vk::Extent2D m_swapChainExtent;
 	vk::raii::SwapchainKHR m_swapChain{nullptr};
 	std::vector<vk::Image> m_swapChainImages;
+
+	std::vector<vk::raii::ImageView> m_swapChainImageViews;
 
 	std::string m_applicationName;
 };
