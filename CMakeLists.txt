@@ -160,3 +160,4 @@ endfunction ()
 
 add_chapter(05_window-surface)
 add_chapter(06_swapchain)
+add_chapter(07_image-views)
