@@ -161,3 +161,6 @@ endfunction ()
 add_chapter(05_window-surface)
 add_chapter(06_swapchain)
 add_chapter(07_image-views)
+add_chapter(08_shader-modules
+		SHADER 08_shader-base
+)

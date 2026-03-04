@@ -19,7 +19,7 @@ using u32 = std::uint32_t;
 constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
-class HelloTriangleApplication
+class LifeDuringWartime
 {
 	vk::ResultValue<vk::raii::Instance> createInstance()
 	{
@@ -119,7 +119,7 @@ int main()
 {
 	try
 	{
-		HelloTriangleApplication app;
+		LifeDuringWartime app;
 		app.run(WIDTH, HEIGHT);
 	}
 	catch (const std::runtime_error& e)

@@ -19,7 +19,7 @@ using u32 = std::uint32_t;
 constexpr i32 WIDTH = 800;
 constexpr i32 HEIGHT = 600;
 
-class HelloTriangleApplication
+class LifeDuringWartime
 {
 	void initWindow(const i32 width, const i32 height)
 	{
@@ -69,7 +69,7 @@ private:
 
 int main()
 {
-	HelloTriangleApplication app;
+	LifeDuringWartime app;
 
 	app.run(WIDTH, HEIGHT);
 }

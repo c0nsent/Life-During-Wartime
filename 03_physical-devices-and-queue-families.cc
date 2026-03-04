@@ -36,7 +36,7 @@ constexpr bool IS_VALIDATION_LAYERS_ENABLED{ true };
 #endif
 
 
-class HelloTriangleApplication
+class LifeDuringWartime
 {
 	[[nodiscard]] bool initValidationLayers() const
 	{
@@ -258,7 +258,7 @@ int main()
 {
 	try
 	{
-		HelloTriangleApplication app;
+		LifeDuringWartime app;
 		app.run(WIDTH, HEIGHT);
 	}
 	catch (const std::runtime_error& e)

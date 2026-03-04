@@ -35,7 +35,7 @@ constexpr bool IS_VALIDATION_LAYERS_ENABLED{ true };
 #endif
 
 
-class HelloTriangleApplication
+class LifeDuringWartime
 {
 	[[nodiscard]] bool initValidationLayers() const
 	{
@@ -276,7 +276,7 @@ class HelloTriangleApplication
 		else
 			throw std::runtime_error{"Can't create logical device"};
 
-		m_graphicsQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
+		m_deviceQueue = vk::raii::Queue{m_device, graphicsIndex, 0};
 	}
 
 	void mainLoop()
@@ -315,14 +315,14 @@ private:
 	vk::raii::PhysicalDevice m_physicalDevice{nullptr};
 	vk::raii::Device m_device{nullptr};
 
-	vk::raii::Queue m_graphicsQueue{nullptr};
+	vk::raii::Queue m_deviceQueue{nullptr};
 };
 
 int main()
 {
 	try
 	{
-		HelloTriangleApplication app;
+		LifeDuringWartime app;
 		app.run(WIDTH, HEIGHT);
 	}
 	catch (const std::runtime_error& e)
